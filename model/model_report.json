@@ -1,0 +1,109 @@
+{
+    "fast_mode": false,
+    "training_time_seconds": 165.7906858921051,
+    "training_time_minutes": 2.7631780982017515,
+    "cv_scores": {
+        "lgb": 0.9998518896607691,
+        "xgb": 0.9998598111094719,
+        "cat": 0.9999396200157626,
+        "rf": 0.9486661042869052,
+        "et": 0.9259502731162071,
+        "ridge": 0.999987039660013,
+        "elastic": 0.6407153879786941,
+        "mlp": 0.46264047426205357
+    },
+    "numeric_features_count": 47,
+    "categorical_features_count": 4,
+    "selected_features_count": 51,
+    "selected_features": [
+        "move_number",
+        "start_eval",
+        "end_eval",
+        "delta_eval",
+        "move_quality",
+        "time_per_move",
+        "accuracy_score",
+        "blunder_risk",
+        "flag1",
+        "flag2",
+        "flag3",
+        "last_elo",
+        "phase_Endgame",
+        "phase_Middlegame",
+        "phase_Opening",
+        "start_eval_x_accuracy_score",
+        "start_eval_ratio_accuracy_score",
+        "start_eval_x_blunder_risk",
+        "start_eval_ratio_blunder_risk",
+        "start_eval_x_time_per_move",
+        "start_eval_ratio_time_per_move",
+        "end_eval_x_accuracy_score",
+        "end_eval_ratio_accuracy_score",
+        "end_eval_x_blunder_risk",
+        "end_eval_ratio_blunder_risk",
+        "end_eval_x_time_per_move",
+        "end_eval_ratio_time_per_move",
+        "delta_eval_x_accuracy_score",
+        "delta_eval_ratio_accuracy_score",
+        "delta_eval_x_blunder_risk",
+        "delta_eval_ratio_blunder_risk",
+        "delta_eval_x_time_per_move",
+        "delta_eval_ratio_time_per_move",
+        "accuracy_score_x_blunder_risk",
+        "accuracy_score_ratio_blunder_risk",
+        "accuracy_score_x_phase_Endgame",
+        "accuracy_score_ratio_phase_Endgame",
+        "accuracy_score_x_phase_Middlegame",
+        "accuracy_score_ratio_phase_Middlegame",
+        "accuracy_score_x_phase_Opening",
+        "accuracy_score_ratio_phase_Opening",
+        "accuracy_score_x_time_per_move",
+        "accuracy_score_ratio_time_per_move",
+        "time_per_move_x_phase_Endgame",
+        "time_per_move_ratio_phase_Endgame",
+        "time_per_move_x_phase_Middlegame",
+        "time_per_move_ratio_phase_Middlegame",
+        "time_per_move_x_phase_Opening",
+        "time_per_move_ratio_phase_Opening",
+        "time_per_move_x_move_number",
+        "time_per_move_ratio_move_number"
+    ],
+    "base_models": [
+        "lgb",
+        "xgb",
+        "cat",
+        "rf",
+        "et",
+        "ridge",
+        "elastic",
+        "mlp"
+    ],
+    "metrics": {
+        "r2": 0.9999892825538589,
+        "mae": 1.316336196573381,
+        "rmse": 1.7121441715596417,
+        "median_abs_error": 1.0554675115859027,
+        "threshold_accuracies": {
+            "10": 100.0,
+            "25": 100.0,
+            "50": 100.0,
+            "100": 100.0
+        }
+    },
+    "data_shapes": {
+        "X_train": [
+            39996,
+            15
+        ],
+        "X_test": [
+            10032,
+            15
+        ],
+        "y_train": [
+            39996
+        ],
+        "y_test": [
+            10032
+        ]
+    }
+}
