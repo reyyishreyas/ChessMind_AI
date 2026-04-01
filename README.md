@@ -21,11 +21,9 @@ The goal is to create a more realistic and useful training environment.
 
 ## Demo
 
-Live demo:
-[Add deployed link here]
-
 Video walkthrough:
-[Add demo video link here]
+[(https://drive.google.com/file/d/1xFnCvqkNif8Q96LK8WOTo7sPBoKdd6bx/view?usp=sharing)]
+
 
 ---
 
@@ -160,7 +158,7 @@ FASTAPI_URL=http://localhost:8000
 The trained model is not included in the repository due to size constraints.
 
 Download it here:
-[Add Google Drive link here]
+[https://drive.google.com/file/d/1AxnfG1vqhdNMgmeJetjM069smXFMX--y/view?usp=sharing]
 
 Place it inside:
 
@@ -293,12 +291,6 @@ python train.py
 ## Contributing
 
 Pull requests are welcome.
-
----
-
-## License
-
-MIT License
 
 ---
 
