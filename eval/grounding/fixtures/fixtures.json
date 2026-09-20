@@ -1,0 +1,63 @@
+{
+  "_note": "Hand-curated grounding fixtures. 'bad' items contain a hallucinated/illegal claim on purpose. expect_moves / expect_captures assert extractor coverage.",
+  "fixtures": [
+    {
+      "id": "startpos-good",
+      "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      "fen_before": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      "analysis": "Great start! You played e4 to fight for the center and open lines. Nf3 is also a solid developing move.",
+      "expect_moves": ["e4", "Nf3"],
+      "expect_captures": [],
+      "bad": false
+    },
+    {
+      "id": "startpos-uci-good",
+      "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      "fen_before": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      "analysis": "Excellent. Playing e2e4 grabs the center and opens the diagonal for the bishop.",
+      "expect_moves": ["e2e4"],
+      "expect_captures": [],
+      "bad": false
+    },
+    {
+      "id": "startpos-halluc",
+      "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      "analysis": "You should play h5 to attack the king, then the queen goes to h4 for mate.",
+      "expect_moves": ["h5", "h4"],
+      "expect_captures": [],
+      "bad": true
+    },
+    {
+      "id": "italian-good",
+      "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+      "analysis": "You should play d4 to challenge Black's e5 pawn. Nc3 develops the knight toward the center.",
+      "expect_moves": ["Nc3", "d4"],
+      "expect_captures": [],
+      "bad": false
+    },
+    {
+      "id": "italian-capture-good",
+      "fen": "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 2 3",
+      "analysis": "Great tactic! Nxe5 grabs the pawn on e5 and the knight settles into the center.",
+      "expect_moves": ["Nxe5"],
+      "expect_captures": ["e5"],
+      "bad": false
+    },
+    {
+      "id": "italian-capture-halluc",
+      "fen": "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 2 3",
+      "analysis": "Nice, you captured the queen on h6 and then won a whole rook.",
+      "expect_moves": [],
+      "expect_captures": ["h6"],
+      "bad": true
+    },
+    {
+      "id": "italian-move-halluc",
+      "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+      "analysis": "Black should play Nb1 to grab the center with the knight.",
+      "expect_moves": ["Nb1"],
+      "expect_captures": [],
+      "bad": true
+    }
+  ]
+}

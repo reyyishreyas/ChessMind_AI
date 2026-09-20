@@ -15,6 +15,10 @@ export interface LLMCallRecord {
   parseCount?: number
   error?: string
   prompt?: string
+  /** Parsed model response, when available. */
+  data?: unknown
+  /** Structured call context (e.g. recorded FEN) for replay validation. */
+  meta?: { fen?: string; fenBefore?: string; [key: string]: unknown }
 }
 
 export interface LLMCallWriter {
@@ -53,6 +57,8 @@ export class SupabaseWriter implements LLMCallWriter {
       parse_count: record.parseCount,
       error: record.error,
       prompt: record.prompt,
+      data: record.data === undefined ? null : record.data,
+      meta: record.meta === undefined ? null : record.meta,
     })
     if (error) throw new Error(error.message)
   }

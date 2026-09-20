@@ -18,9 +18,11 @@ MAIA_ANCHORS = [1200, 1500, 1800]
 BOT_TAGS = {"stockfish": "sf", "maia": "maia"}
 
 
-def run(anchors: list[int], games_per_pair: int, depth: int, bot: str = "stockfish") -> pathlib.Path:
+def run(anchors: list[int], games_per_pair: int, depth: int, bot: str = "stockfish", out: pathlib.Path | None = None) -> pathlib.Path:
     pairs = list(itertools.combinations(anchors, 2))
     tag = BOT_TAGS[bot]
+    if out is None:
+        out = RESULTS_DIR / ("bot_calibration_results.csv" if bot == "stockfish" else "maia_calibration_results.csv")
 
     if bot == "maia":
         bots = {elo: MaiaJSBot(elo) for elo in anchors}
@@ -44,7 +46,6 @@ def run(anchors: list[int], games_per_pair: int, depth: int, bot: str = "stockfi
         bot_.close()
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    out = RESULTS_DIR / "bot_calibration_results.csv"
     with out.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=["white", "black", "moves", "score_white", "score_a", "score_b"])
         writer.writeheader()
@@ -60,6 +61,7 @@ if __name__ == "__main__":
     parser.add_argument("--games-per-pair", type=int, default=4)
     parser.add_argument("--depth", type=int, default=10)
     parser.add_argument("--bot", choices=["stockfish", "maia"], default="stockfish")
+    parser.add_argument("--out", type=pathlib.Path, default=None)
     parser.add_argument("--quick", action="store_true", help="tiny smoke run: 2 games per pair, depth 6")
     args = parser.parse_args()
 
@@ -70,4 +72,5 @@ if __name__ == "__main__":
         games_per_pair=args.games_per_pair if not args.quick else 1,
         depth=args.depth if not args.quick else 6,
         bot=args.bot,
+        out=args.out,
     )

@@ -1,0 +1,95 @@
+{
+  "fixtures": {
+    "per_fixture": [
+      {
+        "id": "startpos-good",
+        "bad": false,
+        "n_total": 2,
+        "n_passed": 2,
+        "grounded": 1.0,
+        "illegal_moves": [],
+        "false_captures": []
+      },
+      {
+        "id": "startpos-uci-good",
+        "bad": false,
+        "n_total": 1,
+        "n_passed": 1,
+        "grounded": 1.0,
+        "illegal_moves": [],
+        "false_captures": []
+      },
+      {
+        "id": "startpos-halluc",
+        "bad": true,
+        "n_total": 2,
+        "n_passed": 1,
+        "grounded": 0.5,
+        "illegal_moves": [
+          "proposed:h5"
+        ],
+        "false_captures": []
+      },
+      {
+        "id": "italian-good",
+        "bad": false,
+        "n_total": 2,
+        "n_passed": 2,
+        "grounded": 1.0,
+        "illegal_moves": [],
+        "false_captures": []
+      },
+      {
+        "id": "italian-capture-good",
+        "bad": false,
+        "n_total": 2,
+        "n_passed": 2,
+        "grounded": 1.0,
+        "illegal_moves": [],
+        "false_captures": []
+      },
+      {
+        "id": "italian-capture-halluc",
+        "bad": true,
+        "n_total": 1,
+        "n_passed": 0,
+        "grounded": 0.0,
+        "illegal_moves": [],
+        "false_captures": [
+          "capture-on-h6"
+        ]
+      },
+      {
+        "id": "italian-move-halluc",
+        "bad": true,
+        "n_total": 1,
+        "n_passed": 0,
+        "grounded": 0.0,
+        "illegal_moves": [
+          "proposed:Nb1"
+        ],
+        "false_captures": []
+      }
+    ],
+    "fixture_groundedness": 0.643,
+    "good_fixture_groundedness": 1.0,
+    "coverage_ok": true
+  },
+  "live_replay": {
+    "records": 5,
+    "scored_explanations": 3,
+    "by_model": {
+      "ollama/gemma2:2b": {
+        "calls": 5,
+        "scored": 3,
+        "n_total": 1,
+        "n_passed": 1,
+        "illegal": 0,
+        "false_captures": 0,
+        "parse_errors": 0,
+        "groundedness": 1.0,
+        "rejection_rate": 0.0
+      }
+    }
+  }
+}

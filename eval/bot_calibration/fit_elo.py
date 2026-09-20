@@ -35,24 +35,31 @@ def fit(results_csv: pathlib.Path) -> dict:
     return fitted
 
 
-def report(fitted: dict) -> pathlib.Path:
+def report(fitted: dict, prefix: str = "bot_calibration") -> pathlib.Path:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    out = RESULTS_DIR / "bot_calibration_fitted_elo.csv"
+    out = RESULTS_DIR / f"{prefix}_fitted_elo.csv"
     with out.open("w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["bot", "fitted_elo"])
         for name, elo in sorted(fitted.items(), key=lambda kv: kv[1], reverse=True):
             writer.writerow([name, elo])
 
-    with RESULTS_DIR.joinpath("bot_calibration_fitted_elo.json").open("w") as f:
+    with RESULTS_DIR.joinpath(f"{prefix}_fitted_elo.json").open("w") as f:
         json.dump(fitted, f, indent=2)
 
     return out
 
 
 if __name__ == "__main__":
-    fitted = fit(RESULTS_DIR / "bot_calibration_results.csv")
-    out = report(fitted)
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--csv", type=pathlib.Path, default=RESULTS_DIR / "bot_calibration_results.csv")
+    parser.add_argument("--prefix", type=str, default="bot_calibration")
+    args = parser.parse_args()
+
+    fitted = fit(args.csv)
+    out = report(fitted, args.prefix)
     print(f"\nFitted Elo written to {out}")
     for name, elo in sorted(fitted.items(), key=lambda kv: kv[1], reverse=True):
         print(f"  {name}: fitted {elo}")

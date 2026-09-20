@@ -1,6 +1,6 @@
 import { GeminiProvider } from "./gemini"
 import { GroqProvider } from "./groq"
-import { getWriter, type LLMCallStatus } from "./logger"
+import { getWriter, type LLMCallRecord, type LLMCallStatus } from "./logger"
 import { OllamaProvider } from "./ollama"
 import type { GenerateTextOptions, LLMProvider, LLMResult, ProviderName } from "./types"
 
@@ -46,6 +46,7 @@ export async function generateJSON<T>(
     provider?: LLMProvider
     attempts?: number
     promptVersion?: string
+    meta?: LLMCallRecord["meta"]
   },
 ): Promise<{ data: T; result: LLMResult }> {
   const provider = opts.provider ?? getProvider()
@@ -83,6 +84,8 @@ export async function generateJSON<T>(
         parseCount: attempt,
         status: "ok",
         prompt: opts.prompt,
+        data: data ?? undefined,
+        meta: opts.meta,
       })
 
       return { data, result }

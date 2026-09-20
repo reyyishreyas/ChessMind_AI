@@ -69,7 +69,11 @@ IMPORTANT: Always mention the move the player made in your analysis message. Be 
 Return ONLY valid JSON, no other text.`
 
   try {
-    const { data } = await generateJSON<CoachVerdict>({ prompt, promptVersion: "analyze-move-v1" })
+    const { data } = await generateJSON<CoachVerdict>({
+    prompt,
+    promptVersion: "analyze-move-v1",
+    meta: { fen, fenBefore },
+  })
 
     const hasAll =
       !!data.analysis &&
