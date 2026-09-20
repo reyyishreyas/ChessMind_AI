@@ -20,13 +20,13 @@ import {
   type DifficultyLevel,
   type PlayerStats,
   createDefaultStats,
-  getAIMoveAsync,
   evaluatePlayerMove,
   updateStatsAfterMove,
   updateStatsAfterGame,
   type MoveEvaluation,
 } from "@/lib/adaptive-ai"
 import { eloToDifficulty, getAdaptiveDifficulty, STOCKFISH_LEVELS } from "@/lib/stockfish-eval"
+import { chooseBotMove } from "@/lib/bot"
 import {
   collectMoveFeatures,
   predictElo,
@@ -349,7 +349,7 @@ export function ChessGame() {
       await new Promise((resolve) => setTimeout(resolve, 300))
 
       try {
-        const aiMove = await getAIMoveAsync(gameState, currentDifficulty, playerStats)
+        const aiMove = await chooseBotMove(gameState, botElo, playerStats)
 
         if (aiMove) {
           const newState = makeMove(gameState, aiMove.from, aiMove.to)

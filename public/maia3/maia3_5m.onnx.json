@@ -1,0 +1,17 @@
+{
+  "variant": "maia3-5m",
+  "alias": "5m",
+  "history": 8,
+  "dim_emb": 128,
+  "dim_vit": 256,
+  "num_heads": 8,
+  "num_blocks": 8,
+  "head_hid_dim": 256,
+  "gab_gen_size": 64,
+  "gab_per_square_dim": 0,
+  "gab_intermediate_dim": 64,
+  "include_time_info": false,
+  "sha256": "f7bd01b3e41dceb5e93eb9f4c61e9c4db8b35411effd1d8c984b006cd74bb804",
+  "opset": 18,
+  "dynamic_batch": true
+}
