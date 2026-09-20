@@ -38,6 +38,13 @@ if __name__ == "__main__":
     if statuses["bot calibration"]:
         statuses["elo fit"] = run_suite("elo fit", ["-m", "eval.bot_calibration.fit_elo"])
 
+    statuses["maia calibration"] = run_suite(
+        "maia calibration",
+        ["-m", "eval.bot_calibration.run_calibration", "--bot", "maia", *quick],
+    )
+    if statuses["maia calibration"]:
+        statuses["maia elo fit"] = run_suite("maia elo fit", ["-m", "eval.bot_calibration.fit_elo"])
+
     statuses["elo_model"] = run_suite("elo_model", ["-m", "eval.elo_model.run"]) if (ROOT / "elo_model" / "run.py").exists() else False
     statuses["grounding"] = run_suite("grounding", ["-m", "eval.grounding.run"]) if (ROOT / "grounding" / "run.py").exists() else False
 
