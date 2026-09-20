@@ -23,9 +23,10 @@
         "id": "startpos-halluc",
         "bad": true,
         "n_total": 2,
-        "n_passed": 1,
-        "grounded": 0.5,
+        "n_passed": 0,
+        "grounded": 0.0,
         "illegal_moves": [
+          "subject:Qh4",
           "proposed:h5"
         ],
         "false_captures": []
@@ -71,19 +72,19 @@
         "false_captures": []
       }
     ],
-    "fixture_groundedness": 0.643,
+    "fixture_groundedness": 0.571,
     "good_fixture_groundedness": 1.0,
     "coverage_ok": true
   },
   "live_replay": {
-    "records": 5,
-    "scored_explanations": 3,
+    "records": 15,
+    "scored_explanations": 13,
     "by_model": {
       "ollama/gemma2:2b": {
-        "calls": 5,
-        "scored": 3,
-        "n_total": 1,
-        "n_passed": 1,
+        "calls": 15,
+        "scored": 13,
+        "n_total": 10,
+        "n_passed": 10,
         "illegal": 0,
         "false_captures": 0,
         "parse_errors": 0,

@@ -1,5 +1,13 @@
 import { generateJSON } from "@/lib/llm"
-import { gameStateToFEN, type GameState } from "@/lib/chess-engine"
+import {
+  type GameState,
+  type Move,
+  getPieceAt,
+  isKingInCheck,
+  moveToAlgebraic,
+  gameStateToFEN,
+} from "@/lib/chess-engine"
+import { type MotifId, detectMotifs } from "@/lib/tactics"
 import type { MoveEvaluation } from "@/lib/adaptive-ai"
 
 export const maxDuration = 30
@@ -32,55 +40,59 @@ export async function POST(req: Request) {
   const fen = gameStateToFEN(gameState)
   const fenBefore = stateBefore ? gameStateToFEN(stateBefore) : fen
 
-  const prompt = `You are a chess coach analyzing a player's move. Provide helpful, encouraging feedback.
+  const playerSan = sanFor(stateBefore ?? gameState, gameState, evaluation.from, evaluation.to)
+  const bestSan =
+    evaluation.bestMove && stateBefore
+      ? sanFor(stateBefore, gameState, evaluation.bestMove.from, evaluation.bestMove.to)
+      : evaluation.bestMove
+        ? `${evaluation.bestMove.from} to ${evaluation.bestMove.to}`
+        : "N/A"
 
-BOT'S MOVE (previous move):
-Position before bot move (FEN): ${fenBefore}
-Bot moved: ${botMove ? `${botMove.from} to ${botMove.to}` : "N/A"}
+  const motifs: MotifId[] =
+    stateBefore && stateBefore !== gameState
+      ? detectMotifs(stateBefore, gameState, evaluation.from, evaluation.to)
+      : []
 
-PLAYER'S MOVE (current move):
-Position before player move (FEN): ${fenBefore}
-Position after player move (FEN): ${fen}
-Player moved: ${evaluation.from} to ${evaluation.to}
-Move evaluation: ${evaluation.type}
-Centipawn loss: ${evaluation.centipawnLoss || 0} cp
-${evaluation.bestMove ? `Better move was: ${evaluation.bestMove.from} to ${evaluation.bestMove.to}` : ""}
-Recent moves: ${moveHistory.slice(-10).join(", ") || "Game just started"}
-Player ELO rating: ~${playerStats?.skillRating || 1000}
+  const prompt = `You are a chess coach analyzing a player's move. Ground every claim in the verified facts below.
 
-You MUST respond with a JSON object containing these exact fields:
+VERIFIED FACTS (all correct; never contradict or go beyond them):
+- Player played: ${playerSan} (from ${evaluation.from} to ${evaluation.to})
+- Move grade: ${evaluation.type}; centipawn loss: ${evaluation.centipawnLoss || 0} cp
+- Position before player move (FEN): ${fenBefore}
+- Position after player move (FEN): ${fen}
+- Better move was: ${bestSan}
+- Verified tactical motifs in this move: ${motifs.length ? motifs.join(", ") : "none"}
+- Recent moves: ${moveHistory.slice(-10).join(", ") || "Game just started"}
+- Player ELO rating: ~${playerStats?.skillRating || 1000}
+
+WRITING RULES:
+1. When you name the player's move, use exactly "${playerSan}".
+2. Never claim a tactic (fork, pin, skewer, discovered attack, etc.) unless it is in the verified list above.
+3. Alternatives must reference the provided better move "${bestSan}".
+4. Only mention squares and pieces that exist in the position.
+5. Do not fabricate move counts, game phases, or openings.
+
+Return ONLY valid JSON:
 {
-  "analysis": "A friendly, helpful message about this move. Examples:
-    - If GOOD/EXCELLENT/BRILLIANT: 'Great move! You played [move]. This [explains why it's good].'
-    - If INACCURACY: 'This move [move] is slightly inaccurate. A better option would have been [better move] because [reason].'
-    - If MISTAKE: 'This move [move] was a mistake. You missed [better move] which would have [explanation]. Consider [advice].'
-    - If BLUNDER: 'This move [move] was a blunder! You should have played [better move] instead. [Explain why it's bad and what you missed].'
-  Keep it conversational, encouraging, and educational (2-3 sentences).",
+  "analysis": "Conversational, encouraging, educational 2-3 sentence message. Name the player's move and explain only using the verified facts.",
   "move_quality": "Brilliant" | "Good" | "Mistake" | "Blunder" | "Perfect" | "Inaccuracy",
   "accuracy_score": <number between 0 and 100>,
-  "blunder_risk": "low" | "medium" | "high",
-  "flag3": 1 if there's a tactical motif (fork, pin, skewer, discovered attack, etc.), else 0
+  "blunder_risk": "low" | "medium" | "high"
 }
-
-Tactical motifs include: fork, pin, skewer, discovered attack, double attack, deflection, decoy, interference, overloading, removing the defender, zwischenzug, zugzwang.
-
-IMPORTANT: Always mention the move the player made in your analysis message. Be specific and helpful.
-
-Return ONLY valid JSON, no other text.`
+Return only the JSON object, no other text.`
 
   try {
     const { data } = await generateJSON<CoachVerdict>({
-    prompt,
-    promptVersion: "analyze-move-v1",
-    meta: { fen, fenBefore },
-  })
+      prompt,
+      promptVersion: "analyze-move-v2",
+      meta: { fen, fenBefore },
+    })
 
     const hasAll =
       !!data.analysis &&
       !!data.move_quality &&
       typeof data.accuracy_score === "number" &&
-      data.blunder_risk !== undefined &&
-      data.flag3 !== undefined
+      data.blunder_risk !== undefined
 
     if (!hasAll) {
       return Response.json({ error: "Model returned incomplete data", success: false }, { status: 502 })
@@ -91,11 +103,26 @@ Return ONLY valid JSON, no other text.`
       move_quality: normalizeMoveQuality(String(data.move_quality)),
       accuracy_score: Math.max(0, Math.min(100, Number(data.accuracy_score))),
       blunder_risk: String(data.blunder_risk),
-      flag3: data.flag3 ? 1 : 0,
+      flag3: motifs.length ? 1 : 0,
+      motifs,
     })
   } catch (error) {
     return Response.json({ error: "Model request failed", success: false }, { status: 502 })
   }
+}
+
+function sanFor(stateBefore: GameState, stateAfter: GameState, from: string, to: string): string {
+  const piece = getPieceAt(stateBefore, from)
+  if (!piece) return `${from}-${to}`
+  const move: Move = {
+    from,
+    to,
+    piece: piece.type,
+    captured: getPieceAt(stateBefore, to)?.type,
+    check: isKingInCheck(stateAfter, piece.color === "w" ? "b" : "w"),
+    checkmate: stateAfter.isCheckmate,
+  }
+  return moveToAlgebraic(stateBefore, move)
 }
 
 function normalizeMoveQuality(quality: string): string {
