@@ -1,8 +1,16 @@
-import { GoogleGenAI } from "@google/genai";
+import { generateJSON } from "@/lib/llm"
 import { gameStateToFEN, type GameState } from "@/lib/chess-engine"
 import type { MoveEvaluation } from "@/lib/adaptive-ai"
 
 export const maxDuration = 30
+
+type CoachVerdict = {
+  analysis?: string
+  move_quality?: string
+  accuracy_score?: number
+  blunder_risk?: string
+  flag3?: number
+}
 
 export async function POST(req: Request) {
   const {
@@ -24,7 +32,6 @@ export async function POST(req: Request) {
   const fen = gameStateToFEN(gameState)
   const fenBefore = stateBefore ? gameStateToFEN(stateBefore) : fen
 
-  // Enhanced prompt to get structured features AND user-friendly feedback
   const prompt = `You are a chess coach analyzing a player's move. Provide helpful, encouraging feedback.
 
 BOT'S MOVE (previous move):
@@ -61,67 +68,30 @@ IMPORTANT: Always mention the move the player made in your analysis message. Be 
 
 Return ONLY valid JSON, no other text.`
 
-  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-  
   try {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const result = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-      })
+    const { data } = await generateJSON<CoachVerdict>({ prompt, promptVersion: "analyze-move-v1" })
 
-      const responseText = result.text || ""
-      let jsonMatch = responseText.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) {
-        jsonMatch = [responseText]
-      }
+    const hasAll =
+      !!data.analysis &&
+      !!data.move_quality &&
+      typeof data.accuracy_score === "number" &&
+      data.blunder_risk !== undefined &&
+      data.flag3 !== undefined
 
-      let geminiData: {
-        analysis?: string
-        move_quality?: string
-        accuracy_score?: number
-        blunder_risk?: string
-        flag3?: number
-      } = {}
-
-      try {
-        geminiData = JSON.parse(jsonMatch[0])
-      } catch {
-        geminiData = {}
-      }
-
-      const hasAll = !!(geminiData.analysis && geminiData.move_quality && typeof geminiData.accuracy_score === "number" && geminiData.blunder_risk !== undefined && geminiData.flag3 !== undefined)
-      if (hasAll) {
-        const moveQuality = normalizeMoveQuality(String(geminiData.move_quality))
-        const accuracyScore = Math.max(0, Math.min(100, Number(geminiData.accuracy_score)))
-        const blunderRisk = String(geminiData.blunder_risk)
-        const flag3 = geminiData.flag3 ? 1 : 0
-        return Response.json({
-          analysis: String(geminiData.analysis),
-          move_quality: moveQuality,
-          accuracy_score: accuracyScore,
-          blunder_risk: blunderRisk,
-          flag3,
-        })
-      }
+    if (!hasAll) {
+      return Response.json({ error: "Model returned incomplete data", success: false }, { status: 502 })
     }
-    return Response.json({ error: "Gemini data unavailable", success: false }, { status: 502 })
-  } catch (error) {
-    return Response.json({ error: "Gemini request failed", success: false }, { status: 502 })
-  }
-}
 
-function mapMoveQuality(type: MoveEvaluation["type"]): string {
-  const map: Record<MoveEvaluation["type"], string> = {
-    brilliant: "Brilliant",
-    excellent: "Perfect",
-    good: "Good",
-    inaccuracy: "Inaccuracy",
-    mistake: "Mistake",
-    blunder: "Blunder",
+    return Response.json({
+      analysis: String(data.analysis),
+      move_quality: normalizeMoveQuality(String(data.move_quality)),
+      accuracy_score: Math.max(0, Math.min(100, Number(data.accuracy_score))),
+      blunder_risk: String(data.blunder_risk),
+      flag3: data.flag3 ? 1 : 0,
+    })
+  } catch (error) {
+    return Response.json({ error: "Model request failed", success: false }, { status: 502 })
   }
-  return map[type] || "Good"
 }
 
 function normalizeMoveQuality(quality: string): string {
@@ -133,51 +103,4 @@ function normalizeMoveQuality(quality: string): string {
   if (normalized.includes("mistake")) return "Mistake"
   if (normalized.includes("blunder")) return "Blunder"
   return "Good"
-}
-
-function calculateAccuracyScore(evaluation: MoveEvaluation): number {
-  // Map move types to accuracy scores (0-100)
-  const scoreMap: Record<MoveEvaluation["type"], number> = {
-    brilliant: 100,
-    excellent: 95,
-    good: 85,
-    inaccuracy: 65,
-    mistake: 40,
-    blunder: 15,
-  }
-  const baseScore = scoreMap[evaluation.type] || 75
-  
-  // Adjust based on centipawn loss
-  const cpLoss = evaluation.centipawnLoss || 0
-  if (cpLoss > 300) return Math.max(0, baseScore - 20)
-  if (cpLoss > 150) return Math.max(0, baseScore - 10)
-  return baseScore
-}
-
-function calculateBlunderRisk(evaluation: MoveEvaluation): "low" | "medium" | "high" {
-  const cpLoss = evaluation.centipawnLoss || 0
-  if (cpLoss > 300 || evaluation.type === "blunder") return "high"
-  if (cpLoss > 150 || evaluation.type === "mistake") return "medium"
-  return "low"
-}
-
-function getFallbackAnalysis(evaluation: MoveEvaluation): string {
-  const cpLoss = evaluation.centipawnLoss || 0
-
-  switch (evaluation.type) {
-    case "brilliant":
-      return "Brilliant! You found an exceptional move that significantly improves your position."
-    case "excellent":
-      return "Excellent move! You're playing with great precision and understanding."
-    case "good":
-      return "Solid move. Keep up the good play!"
-    case "inaccuracy":
-      return `Small inaccuracy (${cpLoss}cp loss). ${evaluation.bestMove ? `${evaluation.bestMove.from}-${evaluation.bestMove.to} would give you a slightly better position.` : "Look for more active moves."}`
-    case "mistake":
-      return `That's a mistake (${cpLoss}cp loss). ${evaluation.bestMove ? `${evaluation.bestMove.from}-${evaluation.bestMove.to} was stronger.` : ""} Think about piece activity and king safety!`
-    case "blunder":
-      return `Significant error (${cpLoss}cp loss)! ${evaluation.bestMove ? `${evaluation.bestMove.from}-${evaluation.bestMove.to} was much better.` : ""} Take your time and check for tactics before moving.`
-    default:
-      return "Interesting move. Let's see how the game develops."
-  }
 }

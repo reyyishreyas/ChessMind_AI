@@ -30,6 +30,8 @@ model/ensemble_model.pkl
 # Logs
 logs/
 *.log
+# LLM call traces (local file fallback for observability)
+.llm-calls.ndjson
 
 # Build files
 dist/
