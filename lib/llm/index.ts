@@ -10,6 +10,9 @@ const DEFAULT_MODELS: Record<ProviderName, string> = {
   groq: "llama-3.3-70b-versatile",
 }
 
+// Optional per-model override, e.g. LLM_MODEL=qwen2.5:1.5b for a snappier local coach.
+const MODEL_OVERRIDE = process.env.LLM_MODEL?.trim()
+
 export function getProvider(name?: string): LLMProvider {
   const providerName = (name ?? process.env.LLM_PROVIDER ?? "ollama") as ProviderName
 
@@ -50,7 +53,7 @@ export async function generateJSON<T>(
   },
 ): Promise<{ data: T; result: LLMResult }> {
   const provider = opts.provider ?? getProvider()
-  const model = opts.model ?? DEFAULT_MODELS[provider.name]
+  const model = opts.model ?? MODEL_OVERRIDE ?? DEFAULT_MODELS[provider.name]
   const attempts = opts.attempts ?? 2
   const writer = getWriter()
 

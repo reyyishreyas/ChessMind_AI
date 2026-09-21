@@ -76,8 +76,8 @@ export async function POST(req: Request) {
     evaluation,
     moveHistory,
     skillRating: playerStats?.skillRating ?? null,
-    patternFacts,
-    crossGameFacts,
+    patternFacts: trimFacts(patternFacts, 400),
+    crossGameFacts: trimFacts(crossGameFacts, 500),
     motifDetails,
     playerSan,
     bestSan,
@@ -88,6 +88,9 @@ export async function POST(req: Request) {
       prompt,
       promptVersion: "analyze-move-v3",
       meta: { fen, fenBefore },
+      temperature: 0.1,
+      maxTokens: 120,
+      attempts: 1,
     })
 
     const hasAll =
@@ -125,4 +128,9 @@ function normalizeMoveQuality(quality: string): string {
   if (normalized.includes("mistake")) return "Mistake"
   if (normalized.includes("blunder")) return "Blunder"
   return "Good"
+}
+
+// Cap the length of pattern facts so the prompt stays small (faster prefill).
+function trimFacts(facts: string, maxChars: number): string {
+  return facts.length > maxChars ? facts.slice(0, maxChars).trimEnd() + "…" : facts
 }

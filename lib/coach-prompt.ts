@@ -69,7 +69,7 @@ VERIFIED FACTS (all correct; never contradict or go beyond them):
 ${patternLine}
 ${historyLine}
 
-WRITING RULES:
+WARNING RULES:
 1. When you name the player's move, use exactly "${playerSan}".
 2. Never claim a tactic (fork, pin, skewer, discovered attack, etc.) unless it is in the verified list above.
 3. Alternatives must reference the provided better move "${bestSan}".
@@ -79,7 +79,7 @@ WRITING RULES:
 
 Return ONLY valid JSON:
 {
-  "analysis": "Conversational, encouraging, educational 2-3 sentence message. Name the player's move and explain only using the verified facts.",
+  "analysis": "Exactly one short sentence (at most 15 words) naming the move, coaching tone. No filler.",
   "move_quality": "Brilliant" | "Good" | "Mistake" | "Blunder" | "Perfect" | "Inaccuracy",
   "accuracy_score": <number between 0 and 100>,
   "blunder_risk": "low" | "medium" | "high"
