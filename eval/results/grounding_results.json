@@ -8,7 +8,8 @@
         "n_passed": 2,
         "grounded": 1.0,
         "illegal_moves": [],
-        "false_captures": []
+        "false_captures": [],
+        "false_motifs": []
       },
       {
         "id": "startpos-uci-good",
@@ -17,7 +18,8 @@
         "n_passed": 1,
         "grounded": 1.0,
         "illegal_moves": [],
-        "false_captures": []
+        "false_captures": [],
+        "false_motifs": []
       },
       {
         "id": "startpos-halluc",
@@ -29,7 +31,8 @@
           "subject:Qh4",
           "proposed:h5"
         ],
-        "false_captures": []
+        "false_captures": [],
+        "false_motifs": []
       },
       {
         "id": "italian-good",
@@ -38,7 +41,8 @@
         "n_passed": 2,
         "grounded": 1.0,
         "illegal_moves": [],
-        "false_captures": []
+        "false_captures": [],
+        "false_motifs": []
       },
       {
         "id": "italian-capture-good",
@@ -47,7 +51,8 @@
         "n_passed": 2,
         "grounded": 1.0,
         "illegal_moves": [],
-        "false_captures": []
+        "false_captures": [],
+        "false_motifs": []
       },
       {
         "id": "italian-capture-halluc",
@@ -58,7 +63,8 @@
         "illegal_moves": [],
         "false_captures": [
           "capture-on-h6"
-        ]
+        ],
+        "false_motifs": []
       },
       {
         "id": "italian-move-halluc",
@@ -69,10 +75,77 @@
         "illegal_moves": [
           "proposed:Nb1"
         ],
-        "false_captures": []
+        "false_captures": [],
+        "false_motifs": []
+      },
+      {
+        "id": "pin-bg5-good",
+        "bad": false,
+        "n_total": 2,
+        "n_passed": 2,
+        "grounded": 1.0,
+        "illegal_moves": [],
+        "false_captures": [],
+        "false_motifs": []
+      },
+      {
+        "id": "pin-bg5-wrong-subject",
+        "bad": true,
+        "n_total": 1,
+        "n_passed": 0,
+        "grounded": 0.0,
+        "illegal_moves": [],
+        "false_captures": [],
+        "false_motifs": [
+          "motif:pin->b"
+        ]
+      },
+      {
+        "id": "fork-nf3-good",
+        "bad": false,
+        "n_total": 2,
+        "n_passed": 2,
+        "grounded": 1.0,
+        "illegal_moves": [],
+        "false_captures": [],
+        "false_motifs": []
+      },
+      {
+        "id": "fork-nf3-wrong-subject",
+        "bad": true,
+        "n_total": 2,
+        "n_passed": 1,
+        "grounded": 0.5,
+        "illegal_moves": [],
+        "false_captures": [],
+        "false_motifs": [
+          "motif:fork->q"
+        ]
+      },
+      {
+        "id": "skewer-re1-good",
+        "bad": false,
+        "n_total": 2,
+        "n_passed": 2,
+        "grounded": 1.0,
+        "illegal_moves": [],
+        "false_captures": [],
+        "false_motifs": []
+      },
+      {
+        "id": "pin-bg5-discovered-halluc",
+        "bad": true,
+        "n_total": 1,
+        "n_passed": 0,
+        "grounded": 0.0,
+        "illegal_moves": [],
+        "false_captures": [],
+        "false_motifs": [
+          "motif:discovered"
+        ]
       }
     ],
-    "fixture_groundedness": 0.571,
+    "fixture_groundedness": 0.577,
     "good_fixture_groundedness": 1.0,
     "coverage_ok": true
   },
@@ -83,13 +156,14 @@
       "ollama/gemma2:2b": {
         "calls": 15,
         "scored": 13,
-        "n_total": 10,
+        "n_total": 11,
         "n_passed": 10,
         "illegal": 0,
         "false_captures": 0,
+        "false_motifs": 1,
         "parse_errors": 0,
-        "groundedness": 1.0,
-        "rejection_rate": 0.0
+        "groundedness": 0.909,
+        "rejection_rate": 0.091
       }
     }
   }

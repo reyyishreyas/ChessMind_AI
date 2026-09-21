@@ -14,7 +14,12 @@ import re
 
 import chess
 
-from eval.grounding.extract import extract_capture_claims, extract_moves, is_uci
+from eval.grounding.extract import (
+    extract_capture_claims,
+    extract_motif_claims,
+    extract_moves,
+    is_uci,
+)
 
 # Piece-letter + destination square, tolerating x/+ and disambiguation digits.
 PIECE_REF_RE = re.compile(r"([KQRBN])(?:x)?([a-h][1-8])(?:[+#])?$")
@@ -73,7 +78,97 @@ def _capture_is_legal(board: chess.Board, square: str) -> bool:
     return any(m.to_square == target and board.is_capture(m) for m in board.legal_moves)
 
 
-def validate_fen(fen: str, explanation: str, fen_before: str | None = None) -> dict:
+_LINE_DIRS_DIAG = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
+_LINE_DIRS_ORTHO = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+
+
+def _real_motif_subjects(fen_before: str, fen_after: str, move_from: str, move_to: str) -> dict:
+    """Independent (python-chess) answer to 'which pieces are the victims' per
+    motif, so a claim like "pins the bishop" can be checked against the piece
+    actually pinned. Deliberately separate from lib/tactics.ts: a verifier
+    must not trust the engine it audits."""
+    before = chess.Board(fen_before)
+    after = chess.Board(fen_after)
+    mover = before.turn
+    enemy = not mover
+    sq_from = chess.parse_square(move_from)
+    sq_to = chess.parse_square(move_to)
+
+    pin_subjects, skewer_subjects = set(), set()
+    for square in chess.SQUARES:
+        piece = after.piece_at(square)
+        if not piece or piece.color != mover or piece.piece_type not in (chess.ROOK, chess.BISHOP, chess.QUEEN):
+            continue
+        dirs = _LINE_DIRS_DIAG if piece.piece_type == chess.BISHOP else (
+            _LINE_DIRS_ORTHO if piece.piece_type == chess.ROOK else _LINE_DIRS_DIAG + _LINE_DIRS_ORTHO
+        )
+        rank, file = chess.square_rank(square), chess.square_file(square)
+        for dr, df in dirs:
+            first = None
+            r, f = rank + dr, file + df
+            while 0 <= r < 8 and 0 <= f < 8:
+                target = after.piece_at(chess.square(f, r))
+                if target:
+                    first = target
+                    break
+                r, f = r + dr, f + df
+            if first is None or first.color is not enemy:
+                continue
+            second = None
+            r, f = r + dr, f + df
+            while 0 <= r < 8 and 0 <= f < 8:
+                target = after.piece_at(chess.square(f, r))
+                if target:
+                    second = target
+                    break
+                r, f = r + dr, f + df
+            if first.piece_type == chess.KING and second and second.color is enemy:
+                skewer_subjects.add(second.symbol().lower())
+            elif second and second.color is enemy and second.piece_type in (chess.KING, chess.QUEEN):
+                pin_subjects.add(first.symbol().lower())
+
+    fork_subjects = set()
+    moved = after.piece_at(sq_to)
+    if moved and moved.color == mover:
+        for target_sq in after.attacks(sq_to):
+            victim = after.piece_at(target_sq)
+            if victim and victim.color is enemy:
+                fork_subjects.add(victim.symbol().lower())
+
+    return {"pin": pin_subjects, "skewer": skewer_subjects, "fork": fork_subjects}
+
+
+_SUBJECT_VERIFIABLE = {"pin", "skewer", "fork"}
+
+
+def motif_verdicts(explanation: str, oracle: dict | None) -> dict[str, bool]:
+    """Verdicts for motif claims, given the oracle result for the move:
+    {"move": {"from","to"}, "motifs": [...]} or None when the position pair has
+    no real move (e.g. a proposed-move fixture site)."""
+    claims = extract_motif_claims(explanation)
+    if not claims:
+        return {}
+    if not oracle or not oracle.get("move"):
+        return {f"motif:{m}" + (f"->{s}" if s else ""): None for m, s in claims}
+
+    detected = set(oracle["motifs"])
+    subjects = _real_motif_subjects(
+        oracle["fenBefore"], oracle["fenAfter"], oracle["move"]["from"], oracle["move"]["to"]
+    )
+
+    verdicts: dict[str, bool] = {}
+    for motif, subject in claims:
+        key = f"motif:{motif}" + (f"->{subject}" if subject else "")
+        if motif not in detected:
+            verdicts[key] = False
+        elif subject and motif in _SUBJECT_VERIFIABLE and subject not in subjects.get(motif, set()):
+            verdicts[key] = False
+        else:
+            verdicts[key] = True
+    return verdicts
+
+
+def validate_fen(fen: str, explanation: str, fen_before: str | None = None, oracle: dict | None = None) -> dict:
     """Return per-claim verdicts + aggregates for an explanation at a position."""
     board = chess.Board(fen)
     board_before = chess.Board(fen_before) if fen_before else None
@@ -104,7 +199,10 @@ def validate_fen(fen: str, explanation: str, fen_before: str | None = None) -> d
     for piece, sq in capture_claims:
         capture_verdicts[f"capture-on-{sq}"] = _capture_is_legal(board, sq)
 
+    motif_verdicts_map = motif_verdicts(explanation, oracle)
+
     claims = {**move_verdicts, **capture_verdicts}
+    claims.update({k: v for k, v in motif_verdicts_map.items() if v is not None})
     total = len(claims)
     passed = sum(claims.values())
 
@@ -112,21 +210,23 @@ def validate_fen(fen: str, explanation: str, fen_before: str | None = None) -> d
         "fen": fen,
         "move_claims": move_verdicts,
         "capture_claims": capture_verdicts,
+        "motif_claims": motif_verdicts_map,
         "n_total": total,
         "n_passed": passed,
         "grounded": (passed / total) if total else None,
     }
 
 
-def validate_explanation(fen: str, explanation: str, fen_before: str | None = None) -> dict:
+def validate_explanation(fen: str, explanation: str, fen_before: str | None = None, oracle: dict | None = None) -> dict:
     """Aggregate form used by run.py."""
-    result = validate_fen(fen, explanation, fen_before)
+    result = validate_fen(fen, explanation, fen_before, oracle)
     return {
         "n_total": result["n_total"],
         "n_passed": result["n_passed"],
         "grounded": result["grounded"],
-        "illegal_moves": [t for t, ok in result["move_claims"].items() if not ok],
-        "false_captures": [c for c, ok in result["capture_claims"].items() if not ok],
+        "illegal_moves": [t for t, ok in result["move_claims"].items() if ok is False],
+        "false_captures": [c for c, ok in result["capture_claims"].items() if ok is False],
+        "false_motifs": [m for m, ok in result["motif_claims"].items() if ok is False],
     }
 
 

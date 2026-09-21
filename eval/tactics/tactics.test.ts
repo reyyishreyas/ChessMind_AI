@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { type GameState, type Piece } from "../../lib/chess-engine.ts"
-import { detectMotifs } from "../../lib/tactics.ts"
+import { detectMotifDetails, detectMotifs } from "../../lib/tactics.ts"
 
 function fenToState(fen: string): GameState {
   const [placement, turn, castling, enPassant, halfMoves, fullMoves] = fen.split(" ")
@@ -116,4 +116,22 @@ test("board converts from FEN with black pieces", () => {
   assert.equal(state.board[0][0]!.color, "b")
   assert.equal(state.board[2][2]!.type, "n")
   assert.equal(state.board[2][2]!.color, "b")
+})
+
+test("motif details bind pin to the pinned knight (not the moving bishop)", () => {
+  const before = fenToState("rnbqkb1r/ppp2ppp/4pn2/3p4/2PP4/2N5/PP2PPPP/R1BQKBNR w KQkq - 2 4")
+  const after = fenToState("rnbqkb1r/ppp2ppp/4pn2/3p2B1/2PP4/2N5/PP2PPPP/R2QKBNR b KQkq - 3 4")
+  const details = detectMotifDetails(before, after, "c1", "g5")
+  const pin = details.find((d) => d.id === "pin")
+  assert.equal(pin?.subject?.type, "n")
+  assert.equal(pin?.subject?.square, "f6")
+})
+
+test("motif details list both fork targets and the captured piece", () => {
+  const before = fenToState("rnbqkbnr/ppp2ppp/3p4/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 3")
+  const after = fenToState("rnbqkbnr/ppp2ppp/3p4/4p1N1/4P3/8/PPPP1PPP/RNBQKB1R b KQkq - 1 3")
+  const details = detectMotifDetails(before, after, "f3", "g5")
+  const fork = details.find((d) => d.id === "fork")
+  assert.ok(fork?.subjects && fork.subjects.length >= 2, "fork must target >=2 squares")
+  assert.equal(fork!.subjects!.every((s) => s.type === "p"), true)
 })

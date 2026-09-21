@@ -5,8 +5,9 @@ Reproducible experiments proving the system actually does what it claims.
 ```
 eval/
   bot_calibration/   bot-vs-bot matches at anchored levels → fitted Elo vs target
-  elo_model/         trained Elo estimator vs baselines (PENDING)
-  grounding/         LLM claim validator, hallucination rates (PENDING)
+  elo_model/         trained Elo estimator vs baselines (player-level MAE)
+  grounding/         LLM claim validator, hallucination rates
+  tactics/           deterministic motif engine tests
   results/           committed CSV/JSON outputs
   run_all.py         runs every suite, writes results/
 ```

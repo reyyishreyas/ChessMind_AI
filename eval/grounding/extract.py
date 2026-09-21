@@ -39,6 +39,93 @@ CAPTURE_RE = re.compile(
 
 UCI_RE = re.compile(r"[a-h][1-8][a-h][1-8](?:[qrbn])?")
 
+PIECE_WORDS = r"(?:queen|rook|bishop|knight|king|pawn)"
+
+# Motif mention, verb-first: "Bg5 pins the knight", "the move forks the
+# queen". Inflected verb, then the nearest piece word in the next clause.
+MOTIF_VERB_RE = re.compile(r"\b(pin|fork|skewer)(?:s|ed|ing)\s+", re.IGNORECASE)
+
+# Subject-before: "the knight is pinned", "the bishop that gets pinned".
+MOTIF_SUBJECT_RE = re.compile(
+    r"\b(?:your\s+|the\s+)?(" + PIECE_WORDS + r")\s+(?:that\s+)?(?:is|was|gets?)\s+(pinned|forked|skewered)",
+    re.IGNORECASE,
+)
+
+# Noun-with-subject: "a pin on the bishop", "the fork on your queen".
+MOTIF_ON_RE = re.compile(
+    r"\b(pin|fork|skewer)\b\s+on\s+(?:your\s+|the\s+)?(" + PIECE_WORDS + r")",
+    re.IGNORECASE,
+)
+
+# Bare noun (no subject): "there's a pin", "a nice fork".
+MOTIF_NOUN_RE = re.compile(r"\b(pin|fork|skewer)\b", re.IGNORECASE)
+
+# Phrase motifs.
+MOTIF_PHRASE_RE = re.compile(
+    r"\b(discovered\s+attack|discovered\s+check|double\s+attack)\b", re.IGNORECASE
+)
+
+_FWD_PIECE_RE = re.compile(r"\b(" + PIECE_WORDS + r")\b(?!-)", re.IGNORECASE)
+
+MOTIF_BY_WORD = {
+    "discovered attack": "discovered",
+    "discovered check": "discovered",
+    "double attack": "fork",
+}
+_VERB_MAP = {
+    "pin": "pin", "pins": "pin", "pinned": "pin", "pinning": "pin",
+    "fork": "fork", "forks": "fork", "forked": "fork", "forking": "fork",
+    "skewer": "skewer", "skewers": "skewer", "skewered": "skewer", "skewering": "skewer",
+}
+_SUBJECT_MAP = {"queen": "q", "rook": "r", "bishop": "b", "knight": "n", "king": "k", "pawn": "p"}
+
+_NEGATION_GUARD = re.compile(r"\b(?:no|not|avoid(?:ing)?|stop)\b", re.IGNORECASE)
+
+
+def _short_window(text: str, match) -> str:
+    return text[max(0, match.start() - 30) : match.end() + 8]
+
+
+def extract_motif_claims(text: str) -> list[tuple[str, str | None]]:
+    """Motif claims as (motif, subject) tuples, subject being None when the
+    claim names no piece. Only claims that assert a motif actually happened
+    are returned (negated mentions are dropped)."""
+    claims: list[tuple[str, str | None]] = []
+
+    def negated(m) -> bool:
+        return bool(_NEGATION_GUARD.search(_short_window(text, m)))
+
+    for match in MOTIF_VERB_RE.finditer(text):
+        if negated(match):
+            continue
+        motif = _VERB_MAP[match.group(1).lower()]
+        fwd = _FWD_PIECE_RE.search(text, match.end(), match.end() + 40)
+        claims.append((motif, _SUBJECT_MAP.get(fwd.group(1).lower()) if fwd else None))
+
+    for match in MOTIF_SUBJECT_RE.finditer(text):
+        if negated(match):
+            continue
+        claims.append(({"pinned": "pin", "forked": "fork", "skewered": "skewer"}[match.group(2).lower()], _SUBJECT_MAP.get(match.group(1).lower())))
+
+    for match in MOTIF_ON_RE.finditer(text):
+        if negated(match):
+            continue
+        claims.append((match.group(1).lower(), _SUBJECT_MAP.get(match.group(2).lower())))
+
+    for match in MOTIF_PHRASE_RE.finditer(text):
+        if negated(match):
+            continue
+        claims.append((MOTIF_BY_WORD[match.group(1).lower()], None))
+
+    seen = set()
+    out = []
+    for claim in claims:
+        if claim in seen:
+            continue
+        seen.add(claim)
+        out.append(claim)
+    return out
+
 
 def is_uci(token: str) -> bool:
     """True if a token looks like UCI (e2e4 / e7e8q) rather than SAN."""
@@ -97,4 +184,5 @@ def extract_explanation_claims(text: str) -> dict:
         "moves_proposed": sorted(t for t, _ in moves if _ == "proposed"),
         "squares": sorted(set(extract_squares(text))),
         "captures": sorted({sq for _, sq in captures}),
+        "motifs": [{"motif": m, "subject": s} for m, s in extract_motif_claims(text)],
     }

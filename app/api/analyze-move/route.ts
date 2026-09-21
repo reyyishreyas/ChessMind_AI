@@ -7,7 +7,7 @@ import {
   moveToAlgebraic,
   gameStateToFEN,
 } from "@/lib/chess-engine"
-import { type MotifId, detectMotifs } from "@/lib/tactics"
+import { type MotifDetail, type MotifId, detectMotifDetails, detectMotifs } from "@/lib/tactics"
 import type { MoveEvaluation } from "@/lib/adaptive-ai"
 
 export const maxDuration = 30
@@ -53,6 +53,13 @@ export async function POST(req: Request) {
       ? detectMotifs(stateBefore, gameState, evaluation.from, evaluation.to)
       : []
 
+  const motifDetails: MotifDetail[] =
+    stateBefore && stateBefore !== gameState
+      ? detectMotifDetails(stateBefore, gameState, evaluation.from, evaluation.to)
+      : []
+
+  const motifFacts = describeMotifs(motifDetails)
+
   const prompt = `You are a chess coach analyzing a player's move. Ground every claim in the verified facts below.
 
 VERIFIED FACTS (all correct; never contradict or go beyond them):
@@ -61,7 +68,7 @@ VERIFIED FACTS (all correct; never contradict or go beyond them):
 - Position before player move (FEN): ${fenBefore}
 - Position after player move (FEN): ${fen}
 - Better move was: ${bestSan}
-- Verified tactical motifs in this move: ${motifs.length ? motifs.join(", ") : "none"}
+- Verified tactical motifs in this move: ${motifFacts || "none"}
 - Recent moves: ${moveHistory.slice(-10).join(", ") || "Game just started"}
 - Player ELO rating: ~${playerStats?.skillRating || 1000}
 
@@ -105,10 +112,35 @@ Return only the JSON object, no other text.`
       blunder_risk: String(data.blunder_risk),
       flag3: motifs.length ? 1 : 0,
       motifs,
+      motifDetails,
     })
   } catch (error) {
     return Response.json({ error: "Model request failed", success: false }, { status: 502 })
   }
+}
+
+function describeMotifs(details: MotifDetail[]): string {
+  return details
+    .map((d) => {
+      if (d.subjects && d.subjects.length) {
+        const names = d.subjects.map((s) => `${PIECE_NAMES[s.type]} on ${s.square}`).join(" and ")
+        return `${d.id} (${names})`
+      }
+      if (d.subject) {
+        return `${d.id} (${PIECE_NAMES[d.subject.type]} on ${d.subject.square})`
+      }
+      return d.id
+    })
+    .join(", ")
+}
+
+const PIECE_NAMES: Record<string, string> = {
+  p: "pawn",
+  n: "knight",
+  b: "bishop",
+  r: "rook",
+  q: "queen",
+  k: "king",
 }
 
 function sanFor(stateBefore: GameState, stateAfter: GameState, from: string, to: string): string {
