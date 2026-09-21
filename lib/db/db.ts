@@ -421,6 +421,33 @@ export function insertLlmCall(input: LlmCallInput): void {
   )
 }
 
+/** One player move as persisted in `game_moves` (camelCase mirrors the schema). */
+export type SavedMoveRow = {
+  gameId: string
+  moveNo: number
+  squareFrom: string
+  squareTo: string
+  piece: string | null
+  grade: string
+  centipawnLoss: number
+  isCapture: number
+  isCheck: number
+  timeMs: number | null
+}
+
+/** Every saved player move across all finished games, oldest game first. */
+export function getPlayerMoveHistory(): SavedMoveRow[] {
+  const db = getDb()
+  return db
+    .prepare(
+      `select game_id as gameId, move_no as moveNo, square_from as squareFrom, square_to as squareTo,
+              piece, grade, centipawn_loss as centipawnLoss, is_capture as isCapture,
+              is_check as isCheck, time_ms as timeMs
+       from game_moves where user_id = ? order by game_id, move_no`
+    )
+    .all(LOCAL_USER_ID) as SavedMoveRow[]
+}
+
 export function resetLocalData(): void {
   const db = getDb()
   db.exec(

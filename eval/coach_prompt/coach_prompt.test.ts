@@ -68,6 +68,7 @@ function buildInput(overrides: Partial<Parameters<typeof buildCoachPrompt>[0]> =
     moveHistory: [],
     skillRating: 1200,
     patternFacts: "",
+    crossGameFacts: "",
     motifDetails: [] as ReturnType<typeof detectMotifDetails>,
     playerSan: "e4",
     bestSan: "N/A",
@@ -86,6 +87,23 @@ test("prompt always carries every verified-fact bullet", () => {
   assert.match(prompt, /- Verified tactical motifs in this move: none/)
   assert.match(prompt, /- Player ELO rating: ~1200/)
   assert.match(prompt, /- Pattern snapshot this session: too few moves yet to judge patterns/)
+  assert.match(prompt, /- Pattern history across finished games: no finished games recorded yet/)
+})
+
+test("cross-game facts are quoted only when provided", () => {
+  const withHistory = buildCoachPrompt(
+    buildInput({
+      crossGameFacts: "12 of your moves across 2 finished games, avg accuracy ~70%; blunders come most with the bishop (3 games)",
+    })
+  )
+  assert.match(
+    withHistory,
+    /- Pattern history across finished games \(ground truth from saved move data\): 12 of your moves across 2 finished games, avg accuracy ~70%; blunders come most with the bishop \(3 games\)/
+  )
+  assert.ok(!withHistory.includes("no finished games recorded yet"))
+
+  const silent = buildCoachPrompt(buildInput({ crossGameFacts: "" }))
+  assert.match(silent, /no finished games recorded yet/)
 })
 
 test("motif facts quote victim subjects verbatim", () => {

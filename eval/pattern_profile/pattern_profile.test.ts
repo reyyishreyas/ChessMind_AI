@@ -4,13 +4,16 @@ import { test } from "node:test"
 import { createInitialState, makeMove, type GameState, type Piece, type Square } from "../../lib/chess-engine.ts"
 import {
   buildPatternProfile,
+  describeCrossGameFacts,
   describePattern,
   patternFindings,
+  profilesFromSavedGames,
   replayPatternEvents,
   scoresFromEvents,
   summarizePatterns,
   type MoveGrade,
   type PatternMoveEvent,
+  type SavedPatternRow,
 } from "../../lib/pattern-profile.ts"
 import type { MoveEvaluation } from "../../lib/adaptive-ai.ts"
 
@@ -200,6 +203,66 @@ test("summarizePatterns drops single-game quirks from recurring findings", () =>
   const summary = summarizePatterns([g1, g2])
   // time-pressure fired only in g1 -> not recurring
   assert.ok(!summary.recurringFindings.some((f) => f.id === "time-pressure"))
+})
+
+function row(gameId: string, moveNo: number, grade: MoveGrade, piece: string, centipawnLoss: number): SavedPatternRow {
+  return {
+    gameId,
+    moveNo,
+    squareFrom: "e2",
+    squareTo: "e4",
+    piece,
+    grade,
+    centipawnLoss,
+    isCapture: 0,
+    isCheck: 0,
+    timeMs: 1000,
+  }
+}
+
+test("profilesFromSavedGames rebuilds per-game profiles from saved rows", () => {
+  const rows = [
+    ...Array.from({ length: 4 }, (_, i) => row("g1", 2 + i * 2, "good", "p", 20)),
+    row("g1", 10, "blunder", "b", 400),
+    row("g1", 12, "blunder", "b", 380),
+    row("g1", 14, "blunder", "b", 420),
+    row("g1", 16, "good", "b", 15),
+    row("g2", 2, "good", "p", 20),
+    row("g2", 4, "good", "p", 20),
+    row("g2", 6, "good", "p", 20),
+    row("g2", 8, "good", "p", 20),
+  ]
+  const profiles = profilesFromSavedGames(rows)
+  assert.equal(profiles.length, 2)
+  assert.equal(profiles[0].nMoves, 8)
+  assert.equal(profiles[1].nMoves, 4)
+  // g1's bishop blunders survive into its per-game findings
+  assert.ok(profiles[0].pieces.some((p) => p.piece === "b" && p.blunders === 3))
+})
+
+test("describeCrossGameFacts reports recurring, grounded facts", () => {
+  const rowsA = [
+    ...Array.from({ length: 4 }, (_, i) => row("g1", 2 + i * 2, "good", "p", 20)),
+    row("g1", 10, "blunder", "b", 400),
+    row("g1", 12, "blunder", "b", 380),
+    row("g1", 14, "blunder", "b", 420),
+    row("g1", 16, "good", "b", 15),
+  ]
+  const rowsB = rowsA.map((r) => (r.gameId === "g1" ? { ...r, gameId: "g2" } : r))
+  const summary = summarizePatterns(profilesFromSavedGames([...rowsA, ...rowsB]))
+  const facts = describeCrossGameFacts(summary)
+
+  assert.ok(facts.includes("16 of your moves across 2 finished games"))
+  assert.ok(facts.includes("most blunders with the bishop") || facts.includes("blunders come most with the bishop"))
+  assert.ok(facts.includes("(2 games)") || facts.includes("(3 games)"))
+})
+
+test("describeCrossGameFacts stays silent until enough saved moves exist", () => {
+  const empty = describeCrossGameFacts(summarizePatterns([]))
+  assert.equal(empty, "")
+
+  const tiny = summarizePatterns(profilesFromSavedGames([row("g1", 2, "good", "p", 20), row("g1", 4, "good", "p", 20)]))
+  assert.equal(describeCrossGameFacts(tiny), "")
 })
 
 test("capture sharpness is reported", () => {

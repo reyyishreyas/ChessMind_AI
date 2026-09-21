@@ -2,8 +2,16 @@ import { generateJSON } from "@/lib/llm"
 import { type GameState, gameStateToFEN } from "@/lib/chess-engine"
 import { type MotifDetail, type MotifId, detectMotifDetails, detectMotifs } from "@/lib/tactics"
 import type { MoveEvaluation } from "@/lib/adaptive-ai"
-import { buildPatternProfile, describePattern, type PatternMoveEvent } from "@/lib/pattern-profile"
+import {
+  buildPatternProfile,
+  describeCrossGameFacts,
+  describePattern,
+  profilesFromSavedGames,
+  summarizePatterns,
+  type PatternMoveEvent,
+} from "@/lib/pattern-profile"
 import { buildCoachPrompt, describeMotifs, sanFor } from "@/lib/coach-prompt"
+import { getPlayerMoveHistory } from "@/lib/db/db"
 
 export const maxDuration = 30
 
@@ -60,6 +68,8 @@ export async function POST(req: Request) {
   const patternProfile = buildPatternProfile(patternMoves ?? [])
   const patternFacts = patternProfile.nMoves >= 4 ? describePattern(patternProfile) : ""
 
+  const crossGameFacts = describeCrossGameFacts(summarizePatterns(profilesFromSavedGames(getPlayerMoveHistory())))
+
   const prompt = buildCoachPrompt({
     stateBefore: stateBefore ?? gameState,
     stateAfter: gameState,
@@ -67,6 +77,7 @@ export async function POST(req: Request) {
     moveHistory,
     skillRating: playerStats?.skillRating ?? null,
     patternFacts,
+    crossGameFacts,
     motifDetails,
     playerSan,
     bestSan,

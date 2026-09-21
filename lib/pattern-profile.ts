@@ -371,6 +371,97 @@ export function summarizePatterns(profiles: PatternProfile[]): CrossGameSummary 
   }
 }
 
+/**
+ * Structural shape of one persisted `game_moves` row (as returned by
+ * lib/db getPlayerMoveHistory). Kept local so this module stays a pure
+ * function of the data with no database import.
+ */
+export type SavedPatternRow = {
+  gameId: string
+  moveNo: number
+  squareFrom: string
+  squareTo: string
+  piece: string | null
+  grade: string
+  centipawnLoss: number
+  isCapture: number | boolean
+  isCheck: number | boolean
+  timeMs: number | null
+}
+
+/** Rebuild per-game profiles from the saved (player-only) move rows. */
+export function profilesFromSavedGames(rows: SavedPatternRow[]): PatternProfile[] {
+  const byGame = new Map<string, PatternMoveEvent[]>()
+  for (const r of rows) {
+    const events = byGame.get(r.gameId) ?? []
+    events.push({
+      moveNo: r.moveNo,
+      squareFrom: r.squareFrom as Square,
+      squareTo: r.squareTo as Square,
+      piece: r.piece as PieceType | null,
+      grade: r.grade as MoveGrade,
+      centipawnLoss: Number(r.centipawnLoss) || 0,
+      isCapture: Boolean(r.isCapture),
+      isCheck: Boolean(r.isCheck),
+      timeMs: r.timeMs,
+    })
+    byGame.set(r.gameId, events)
+  }
+  return [...byGame.values()].map((events) => buildPatternProfile(events))
+}
+
+const RECURRING_LABELS: Array<(id: string) => string | null> = [
+  (id) => {
+    if (id.startsWith("phase-dip-")) {
+      const phase = id.slice("phase-dip-".length)
+      return `accuracy dips in the ${phase}`
+    }
+    if (id.startsWith("piece-blunder-")) {
+      const piece = id.slice("piece-blunder-".length) as PieceType
+      return `blunders come most with the ${PIECE_NAMES[piece] ?? "piece"}`
+    }
+    return null
+  },
+  (id) => (id === "time-pressure" ? "blunders under time pressure" : null),
+  (id) => (id === "inconsistent" ? "uneven, swingy play" : null),
+  (id) => (id === "steady" ? "steady, consistent play" : null),
+  (id) => (id === "capture-sharp" ? "solid capture handling" : null),
+]
+
+function recurringText(id: string): string | null {
+  for (const label of RECURRING_LABELS) {
+    const text = label(id)
+    if (text) return text
+  }
+  return null
+}
+
+/**
+ * Deterministic, grounded facts line for the coach from a cross-game summary.
+ * Empty until there are enough saved moves to warrant coaching input; the
+ * "recurring" findings are reported only when they fired in >= 2 games (the
+ * reducer already guarantees this).
+ */
+export function describeCrossGameFacts(summary: CrossGameSummary): string {
+  if (summary.games === 0 || summary.totalMoves < 4) return ""
+  const parts = [
+    `${summary.totalMoves} of your moves across ${summary.games} finished game${summary.games === 1 ? "" : "s"}, avg accuracy ~${summary.avgAccuracy}%`,
+  ]
+  if (summary.topBlunderPiece) {
+    const name = PIECE_NAMES[summary.topBlunderPiece.piece]
+    const n = Math.round(summary.topBlunderPiece.blunders / (summary.topBlunderPiece.rate || 1))
+    parts.push(`${summary.topBlunderPiece.blunders} of your ${n} ${name} moves were blunders`)
+  }
+  if (summary.worstPhase) {
+    parts.push(`weakest phase is ${summary.worstPhase.phase} (~${summary.worstPhase.accuracy}% accuracy)`)
+  }
+  for (const f of summary.recurringFindings.slice(0, 2)) {
+    const text = recurringText(f.id)
+    if (text) parts.push(`${text} (${f.games} games)`)
+  }
+  return parts.join("; ")
+}
+
 type PlayerMove = {
   from: Square
   to: Square

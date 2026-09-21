@@ -23,6 +23,7 @@ export type CoachPromptInput = {
   moveHistory: string[]
   skillRating: number | null
   patternFacts: string
+  crossGameFacts: string
   motifDetails: MotifDetail[]
   playerSan: string
   bestSan: string
@@ -36,6 +37,7 @@ export function buildCoachPrompt(input: CoachPromptInput): string {
     moveHistory,
     skillRating,
     patternFacts,
+    crossGameFacts,
     motifDetails,
     playerSan,
     bestSan,
@@ -48,6 +50,10 @@ export function buildCoachPrompt(input: CoachPromptInput): string {
     patternFacts !== ""
       ? `- Pattern snapshot this session (ground truth from measured moves): ${patternFacts}`
       : "- Pattern snapshot this session: too few moves yet to judge patterns"
+  const historyLine =
+    crossGameFacts !== ""
+      ? `- Pattern history across finished games (ground truth from saved move data): ${crossGameFacts}`
+      : "- Pattern history across finished games: no finished games recorded yet"
 
   return `You are a chess coach analyzing a player's move. Ground every claim in the verified facts below.
 
@@ -61,6 +67,7 @@ VERIFIED FACTS (all correct; never contradict or go beyond them):
 - Recent moves: ${moveHistory.slice(-10).join(", ") || "Game just started"}
 - Player ELO rating: ~${skillRating ?? 1000}
 ${patternLine}
+${historyLine}
 
 WRITING RULES:
 1. When you name the player's move, use exactly "${playerSan}".
@@ -68,7 +75,7 @@ WRITING RULES:
 3. Alternatives must reference the provided better move "${bestSan}".
 4. Only mention squares and pieces that exist in the position.
 5. Do not fabricate move counts, game phases, or openings.
-6. The pattern snapshot line is verified; you may teach against it, but never add pattern claims beyond it.
+6. The pattern snapshot and pattern-history lines are verified; you may teach against them, but never add pattern claims beyond them.
 
 Return ONLY valid JSON:
 {

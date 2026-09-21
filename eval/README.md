@@ -45,10 +45,13 @@ python3 -m eval.bot_calibration.fit_elo
 - **coach_prompt** (`node --test eval/coach_prompt/coach_prompt.test.ts`):
   `lib/coach-prompt.ts` builds the grounded prompt the route sends; the suite
   asserts every VERIFIED FACTS bullet (player move, grade, FENs, better move,
-  victim-bound motifs, pattern snapshot) appears exactly, and the payload
-  schema forbids fabricated fields.
+  victim-bound motifs, pattern snapshot, cross-game pattern history) appears
+  exactly, and the payload schema forbids fabricated fields.
 - **pattern_profile** (`node --test eval/pattern_profile/pattern_profile.test.ts`):
   the `lib/pattern-profile.ts` profiler — phase/piece/time findings, the
   skill scores, the `replayPatternEvents` board replay, and the
   `summarizePatterns` cross-game reducer — must produce exact, deterministic
-  facts (silence when support is tiny; single-game quirks never recur).
+  facts (silence when support is tiny; single-game quirks never recur). Also
+  covers `profilesFromSavedGames` (rebuilding per-game profiles from the
+  persisted `game_moves` rows) and `describeCrossGameFacts` (the DB-backed
+  pattern-history bullet the analyze-move route feeds the coach).
