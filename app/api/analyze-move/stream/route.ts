@@ -159,6 +159,7 @@ export async function POST(req: Request) {
         const reader = res.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ""
+        let lastEmitted = ""
 
         // eslint-disable-next-line no-constant-condition
         while (true) {
@@ -181,7 +182,13 @@ export async function POST(req: Request) {
 
             if (chunk.response) {
               analysis += chunk.response
-              emit("token", chunk.response)
+              // Emit the cleaned, progressively-complete sentence (not raw
+              // tokens) so the UI grows into the final text with no swap.
+              const visible = cleanSentence(analysis)
+              if (visible && visible !== lastEmitted) {
+                lastEmitted = visible
+                emit("token", visible)
+              }
             }
             if (chunk.done) {
               // Ollama closes the NDJSON after the done chunk; stop parsing.
@@ -244,7 +251,10 @@ function cleanSentence(text: string): string {
   t = t.replace(/^```[\s\S]*?\n/, "").replace(/\n```$/, "")
   const wrapped = t.match(/\{\s*"analysis"\s*:\s*"([\s\S]*?)"\s*}/)
   if (wrapped) t = wrapped[1].replace(/\\n/g, " ").replace(/\s+/g, " ").trim()
-  t = t.replace(/^["'“”]+|["'“”]+$/g, "").replace(/\s+/g, " ").trim()
+  // Strip an in-progress JSON opening so progressive streaming stays clean.
+  t = t.replace(/^\{\s*"analysis"\s*:\s*"/, "")
+  t = t.replace(/^["'“”]+|["'“”]+$/g, "").replace(/[}\]]+\s*$/, "").trim()
+  t = t.replace(/\s+/g, " ").trim()
   return t
 }
 

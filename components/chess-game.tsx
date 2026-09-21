@@ -505,16 +505,20 @@ export function ChessGame() {
       try {
         // Instant-feedback path: the deterministic verdict streams in first
         // (so Elo features/persistence run without waiting), then the coach
-        // sentence appears word by word instead of blocking ~3s.
+        // sentence streams in clean — the box grows into the final text with
+        // no placeholder-then-swap flash, and the verdict badge stays handy.
         await streamCoachAnalysis(reqBody, {
           onPreview: (verdict) => {
-            setAIAnalysis(getDefaultAnalysis(evaluation, from, to))
+            setAIAnalysis("")
             setIsAnalyzing(false)
             void runEloPrediction(verdict)
           },
-          onToken: (draft) => setAIAnalysis(draft),
+          onToken: (draft) => {
+            if (draft && draft.trim().length >= 2) setAIAnalysis(draft)
+          },
           onDone: (analysis) => {
             if (analysis) setAIAnalysis(analysis)
+            setIsAnalyzing(false)
           },
         })
       } catch (streamError) {
@@ -560,26 +564,6 @@ export function ChessGame() {
       console.error("Failed to get AI analysis:", error)
     } finally {
       setIsAnalyzing(false)
-    }
-  }
-
-  const getDefaultAnalysis = (evaluation: MoveEvaluation, from: Square, to: Square): string => {
-    const move = `${from}-${to}`
-    switch (evaluation.type) {
-      case "brilliant":
-        return `Brilliant move! You played ${move}. This exceptional move significantly improves your position.`
-      case "excellent":
-        return `Excellent move! You played ${move}. This is nearly perfect play.`
-      case "good":
-        return `Good move! You played ${move}. Solid continuation.`
-      case "inaccuracy":
-        return `This move ${move} is slightly inaccurate. ${evaluation.bestMove ? `A better option would have been ${evaluation.bestMove.from}-${evaluation.bestMove.to}.` : "Look for more active moves."}`
-      case "mistake":
-        return `This move ${move} was a mistake. ${evaluation.bestMove ? `You missed ${evaluation.bestMove.from}-${evaluation.bestMove.to} which would have been stronger.` : ""} Think about piece activity and king safety!`
-      case "blunder":
-        return `This move ${move} was a blunder! ${evaluation.bestMove ? `You should have played ${evaluation.bestMove.from}-${evaluation.bestMove.to} instead.` : ""} Take your time and check for tactics before moving.`
-      default:
-        return `You played ${move}. Let's see how the game develops.`
     }
   }
 
