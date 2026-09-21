@@ -436,6 +436,14 @@ function recurringText(id: string): string | null {
   return null
 }
 
+export function recurringFindingText(id: string): string | null {
+  for (const label of RECURRING_LABELS) {
+    const text = label(id)
+    if (text) return text
+  }
+  return null
+}
+
 /**
  * Deterministic, grounded facts line for the coach from a cross-game summary.
  * Empty until there are enough saved moves to warrant coaching input; the
@@ -456,7 +464,7 @@ export function describeCrossGameFacts(summary: CrossGameSummary): string {
     parts.push(`weakest phase is ${summary.worstPhase.phase} (~${summary.worstPhase.accuracy}% accuracy)`)
   }
   for (const f of summary.recurringFindings.slice(0, 2)) {
-    const text = recurringText(f.id)
+    const text = recurringFindingText(f.id)
     if (text) parts.push(`${text} (${f.games} games)`)
   }
   return parts.join("; ")

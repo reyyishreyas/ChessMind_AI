@@ -37,6 +37,7 @@ import {
   type MoveFeatures,
 } from "@/lib/elo-prediction"
 import { Button } from "@/components/ui/button"
+import { CoachInsights } from "./coach-insights"
 
 export function ChessGame() {
   const [gameState, setGameState] = useState<GameState>(createInitialState())
@@ -63,6 +64,7 @@ export function ChessGame() {
   const [isLoadingSession, setIsLoadingSession] = useState(true)
   const [showGameResult, setShowGameResult] = useState(false)
   const [gameResult, setGameResult] = useState<{ result: "win" | "loss" | "draw"; tip: string } | null>(null)
+  const [showCoachInsights, setShowCoachInsights] = useState(false)
   const [botElo, setBotElo] = useState<number>(STOCKFISH_LEVELS[5]?.elo || 1200)
   const [botEloHistory, setBotEloHistory] = useState<number[]>([]) // Track ELO history for undo
 
@@ -754,6 +756,8 @@ export function ChessGame() {
         onClose={() => setShowGameResult(false)}
       />
 
+      <CoachInsights open={showCoachInsights} onClose={() => setShowCoachInsights(false)} />
+
       {/* Compact Header */}
       <header className="flex-shrink-0 h-12 px-3 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -781,6 +785,16 @@ export function ChessGame() {
               Start Game
             </Button>
           )}
+
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-xs"
+            onClick={() => setShowCoachInsights(true)}
+            aria-label="Coach insights"
+          >
+            Coach
+          </Button>
         </div>
       </header>
 

@@ -448,6 +448,39 @@ export function getPlayerMoveHistory(): SavedMoveRow[] {
     .all(LOCAL_USER_ID) as SavedMoveRow[]
 }
 
+/** One finished game as persisted in `game_stats` (camelCase mirror of the schema). */
+export type GameHistoryRow = {
+  id: string
+  result: number
+  playerColor: string
+  aiElo: number
+  totalMoves: number
+  excellentMoves: number
+  goodMoves: number
+  inaccurateMoves: number
+  mistakes: number
+  blunders: number
+  ams: number
+  playerEloBefore: number
+  playerEloAfter: number
+  createdAt: string
+}
+
+/** Most recent finished games first. */
+export function getGameHistory(limit = 20): GameHistoryRow[] {
+  const db = getDb()
+  return db
+    .prepare(
+      `select id, result, player_color as playerColor, ai_elo as aiElo, total_moves as totalMoves,
+              excellent_moves as excellentMoves, good_moves as goodMoves,
+              inaccurate_moves as inaccurateMoves, mistakes, blunders, ams,
+              player_elo_before as playerEloBefore, player_elo_after as playerEloAfter,
+              created_at as createdAt
+       from game_stats where user_id = ? order by created_at desc limit ?`
+    )
+    .all(LOCAL_USER_ID, limit) as GameHistoryRow[]
+}
+
 export function resetLocalData(): void {
   const db = getDb()
   db.exec(
