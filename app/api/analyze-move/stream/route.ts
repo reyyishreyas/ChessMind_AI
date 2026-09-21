@@ -2,7 +2,7 @@ import { generateJSON, getProvider, resolveModel } from "@/lib/llm"
 import type { ProviderName } from "@/lib/llm/types"
 import { buildDeterministicVerdict, cleanAnalysis, cleanCoachAnalysis } from "@/lib/coach-verdict"
 import { buildCoachPrompt, buildCoachSentencePrompt, sanFor, type CoachPromptInput } from "@/lib/coach-prompt"
-import { buildMoveExplanation, describeThreatsForPrompt, oppositeColor } from "@/lib/coach-explain"
+import { buildMoveExplanation, describeThreatsAfterMove, oppositeColor } from "@/lib/coach-explain"
 import { type GameState, gameStateToFEN } from "@/lib/chess-engine"
 import { detectMotifDetails, detectMotifs, type MotifDetail, type MotifId } from "@/lib/tactics"
 import type { MoveEvaluation } from "@/lib/adaptive-ai"
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
   const patternFacts = patternProfile.nMoves >= 4 ? describePattern(patternProfile) : ""
 
   const playerColor = stateBefore?.turn ?? oppositeColor(gameState.turn)
-  const threatFact = describeThreatsForPrompt(gameState, playerColor)
+  const threatFact = describeThreatsAfterMove(gameState, playerColor)
   const bestMoveReason =
     evaluation.bestMove && stateBefore
       ? buildMoveExplanation(stateBefore, evaluation.bestMove.from, evaluation.bestMove.to)

@@ -140,6 +140,15 @@ export function describeThreatsForPrompt(state: GameState, playerColor: PieceCol
   )
 }
 
+/**
+ * The threat the player faces *after* their move, i.e. what the opponent can
+ * capture on their turn. The supplied position has already had the turn flipped
+ * to the opponent, so we flip it back for the threat scan.
+ */
+export function describeThreatsAfterMove(stateAfter: GameState, playerColor: PieceColor): string {
+  return describeThreatsForPrompt({ ...stateAfter, turn: playerColor }, playerColor)
+}
+
 const CENTER_SQUARES = new Set(["d4", "e4", "d5", "e5"])
 
 /**

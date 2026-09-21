@@ -8,7 +8,7 @@ import {
   pickForkMove,
   shouldShowHints,
 } from "../../lib/coach-hints.ts"
-import { findThreats, pickTopThreat } from "../../lib/coach-explain.ts"
+import { findThreats, pickTopThreat, describeThreatsAfterMove } from "../../lib/coach-explain.ts"
 import { detectOpening } from "../../lib/opening.ts"
 
 function fenToState(fen: string): GameState {
@@ -70,6 +70,18 @@ test("no threat hints when it is the opponent's turn", () => {
 test("king captures are never reported as threats", () => {
   const state = fenToState("4r3/8/8/8/8/8/8/4K3 w - - 0 1")
   assert.deepEqual(findThreats(state, "w"), [])
+})
+
+test("after-move threats use the opponent's turn (recapture is reported)", () => {
+  const state = fenToState("rnbqkbnr/ppp2ppp/3p4/4N3/4P3/8/PPPP1PPP/RNBQKB1R b KQkq - 0 3")
+  const fact = describeThreatsAfterMove(state, "w")
+  assert.match(fact, /pawn on d6 can capture your knight on e5/)
+  assert.match(fact, /undefended/)
+})
+
+test("after-move threats read 'none' when the opponent cannot capture", () => {
+  const state = fenToState("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1")
+  assert.match(describeThreatsAfterMove(state, "b"), /^none/)
 })
 
 test("fork: a knight move that forks queen and rook is detected", () => {

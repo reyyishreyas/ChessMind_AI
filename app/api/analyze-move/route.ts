@@ -12,7 +12,7 @@ import {
   type PatternMoveEvent,
 } from "@/lib/pattern-profile"
 import { buildCoachPrompt, describeMotifs, sanFor } from "@/lib/coach-prompt"
-import { buildMoveExplanation, describeThreatsForPrompt, oppositeColor } from "@/lib/coach-explain"
+import { buildMoveExplanation, describeThreatsAfterMove, oppositeColor } from "@/lib/coach-explain"
 import { getPlayerMoveHistory } from "@/lib/db/db"
 
 export const maxDuration = 30
@@ -73,7 +73,7 @@ export async function POST(req: Request) {
   const crossGameFacts = describeCrossGameFacts(summarizePatterns(profilesFromSavedGames(getPlayerMoveHistory())))
 
   const playerColor = stateBefore?.turn ?? oppositeColor(gameState.turn)
-  const threatFact = describeThreatsForPrompt(gameState, playerColor)
+  const threatFact = describeThreatsAfterMove(gameState, playerColor)
   const bestMoveReason =
     evaluation.bestMove && stateBefore
       ? buildMoveExplanation(stateBefore, evaluation.bestMove.from, evaluation.bestMove.to)
