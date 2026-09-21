@@ -9,6 +9,7 @@ import {
 } from "@/lib/chess-engine"
 import { type MotifDetail, type MotifId, detectMotifDetails, detectMotifs } from "@/lib/tactics"
 import type { MoveEvaluation } from "@/lib/adaptive-ai"
+import { buildPatternProfile, describePattern, type PatternMoveEvent } from "@/lib/pattern-profile"
 
 export const maxDuration = 30
 
@@ -28,6 +29,7 @@ export async function POST(req: Request) {
     playerStats,
     stateBefore,
     botMove,
+    patternMoves,
   }: {
     gameState: GameState
     evaluation: MoveEvaluation
@@ -35,6 +37,7 @@ export async function POST(req: Request) {
     playerStats: { skillRating: number; averageAccuracy: number } | null
     stateBefore?: GameState
     botMove?: { from: string; to: string }
+    patternMoves?: PatternMoveEvent[]
   } = await req.json()
 
   const fen = gameStateToFEN(gameState)
@@ -60,6 +63,13 @@ export async function POST(req: Request) {
 
   const motifFacts = describeMotifs(motifDetails)
 
+  const patternProfile = buildPatternProfile(patternMoves ?? [])
+  const patternFacts = patternProfile.nMoves >= 4 ? describePattern(patternProfile) : ""
+  const patternLine =
+    patternFacts !== ""
+      ? `- Pattern snapshot this session (ground truth from measured moves): ${patternFacts}`
+      : "- Pattern snapshot this session: too few moves yet to judge patterns"
+
   const prompt = `You are a chess coach analyzing a player's move. Ground every claim in the verified facts below.
 
 VERIFIED FACTS (all correct; never contradict or go beyond them):
@@ -71,6 +81,7 @@ VERIFIED FACTS (all correct; never contradict or go beyond them):
 - Verified tactical motifs in this move: ${motifFacts || "none"}
 - Recent moves: ${moveHistory.slice(-10).join(", ") || "Game just started"}
 - Player ELO rating: ~${playerStats?.skillRating || 1000}
+${patternLine}
 
 WRITING RULES:
 1. When you name the player's move, use exactly "${playerSan}".
@@ -78,6 +89,7 @@ WRITING RULES:
 3. Alternatives must reference the provided better move "${bestSan}".
 4. Only mention squares and pieces that exist in the position.
 5. Do not fabricate move counts, game phases, or openings.
+6. The pattern snapshot line is verified; you may teach against it, but never add pattern claims beyond it.
 
 Return ONLY valid JSON:
 {
@@ -91,7 +103,7 @@ Return only the JSON object, no other text.`
   try {
     const { data } = await generateJSON<CoachVerdict>({
       prompt,
-      promptVersion: "analyze-move-v2",
+      promptVersion: "analyze-move-v3",
       meta: { fen, fenBefore },
     })
 
@@ -113,6 +125,8 @@ Return only the JSON object, no other text.`
       flag3: motifs.length ? 1 : 0,
       motifs,
       motifDetails,
+      patternProfile: patternProfile.nMoves > 0 ? patternProfile : undefined,
+      patternFacts: patternFacts || undefined,
     })
   } catch (error) {
     return Response.json({ error: "Model request failed", success: false }, { status: 502 })

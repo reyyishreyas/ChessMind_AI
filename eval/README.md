@@ -8,6 +8,7 @@ eval/
   elo_model/         trained Elo estimator vs baselines (player-level MAE)
   grounding/         LLM claim validator, hallucination rates
   tactics/           deterministic motif engine tests
+  pattern_profile/   player pattern profiler tests (findings + board replay)
   results/           committed CSV/JSON outputs
   run_all.py         runs every suite, writes results/
 ```
@@ -37,3 +38,7 @@ python3 -m eval.bot_calibration.fit_elo
   which predicts argmax moves from the bundled 5m ONNX via `onnxruntime-node`.
 - **elo_model**: does our Elo regression beat "predict the mean" and ACPL-only?
 - **grounding**: how often does the coach say things that aren't true on the board?
+- **pattern_profile** (`node --test eval/pattern_profile/pattern_profile.test.ts`):
+  the `lib/pattern-profile.ts` profiler — phase/piece/time findings and the
+  `replayPatternEvents` board replay that feeds it from a real game history —
+  must produce exact, deterministic facts (silence when support is tiny).

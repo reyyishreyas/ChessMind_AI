@@ -21,6 +21,19 @@ def run_suite(label: str, argv: list[str]) -> bool:
         return False
 
 
+def run_shell(label: str, argv: list[str]) -> bool:
+    print(f"\n=== {label} ===")
+    try:
+        subprocess.run(argv, cwd=ROOT.parent, check=True)
+        return True
+    except FileNotFoundError:
+        print(f"  SKIP: {argv[0]} not found")
+        return False
+    except subprocess.CalledProcessError as e:
+        print(f"  FAIL: {e}")
+        return False
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--quick", action="store_true", help="run fast smoke versions")
@@ -47,6 +60,10 @@ if __name__ == "__main__":
 
     statuses["elo_model"] = run_suite("elo_model", ["-m", "eval.elo_model.run"]) if (ROOT / "elo_model" / "run.py").exists() else False
     statuses["grounding"] = run_suite("grounding", ["-m", "eval.grounding.run"]) if (ROOT / "grounding" / "run.py").exists() else False
+    statuses["pattern_profile"] = run_shell(
+        "pattern_profile",
+        ["node", "--test", str(ROOT / "pattern_profile" / "pattern_profile.test.ts")],
+    ) if (ROOT / "pattern_profile" / "pattern_profile.test.ts").exists() else False
 
     print("\n=== SUMMARY ===")
     for name, ok in statuses.items():

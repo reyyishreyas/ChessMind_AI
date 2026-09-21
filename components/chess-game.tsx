@@ -14,6 +14,8 @@ import {
   makeMove,
   getValidMoves,
   moveToAlgebraic,
+  getPieceAt,
+  isKingInCheck,
   type Square,
 } from "@/lib/chess-engine"
 import {
@@ -27,6 +29,7 @@ import {
 } from "@/lib/adaptive-ai"
 import { eloToDifficulty, getAdaptiveDifficulty, STOCKFISH_LEVELS } from "@/lib/stockfish-eval"
 import { chooseBotMove } from "@/lib/bot"
+import { replayPatternEvents } from "@/lib/pattern-profile"
 import {
   collectMoveFeatures,
   predictElo,
@@ -387,6 +390,7 @@ export function ChessGame() {
   ) => {
     setIsAnalyzing(true)
     try {
+      const patternMoves = replayPatternEvents(gameHistory, gameEvaluations, moveTimes, playerColor)
       // Get Gemini analysis with features - ALWAYS request for ALL moves
       const response = await fetch("/api/analyze-move", {
         method: "POST",
@@ -402,6 +406,7 @@ export function ChessGame() {
           allEvaluations: gameEvaluations,
           moveTimes,
           botMove,
+          patternMoves,
         }),
       })
       if (!response.ok) {
@@ -423,6 +428,7 @@ export function ChessGame() {
               allEvaluations: gameEvaluations,
               moveTimes,
               botMove,
+              patternMoves,
             }),
           })
           geminiData = await retry.json()
