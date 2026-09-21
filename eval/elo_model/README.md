@@ -1,22 +1,40 @@
-# Elo estimator suite (PENDING)
+# Elo estimator suite
 
-Goal: prove that the trained Elo regression beats simple baselines on real games.
+Goal: prove that a trained Elo regression beats simple baselines on real games,
+so the app's in-game Elo estimator can claim "not a paraphrase of ACPL".
 
-## Pipeline (implements later; shares loader with Step 6 — Lichess import)
+## Pipeline
 
-1. **Loader** — pull a sample of rated Lichess PGNs (`https://database.lichess.org/`).
-   Split **by player, never by game** (leakage!). Control for time control
-   (only `blitz`/`rapid` — not `ultrabullet`).
-2. **Features** — per game: average centipawn loss (ACPL) of each player,
-   move-quality distribution, accuracy, blunder rate, phase breakdown.
-   (We already extract most of these in `lib/elo-prediction.ts` — port them.)
-3. **Baselines** (must beat both):
-   - predict the mean rating
-   - ACPL-only linear regression
-4. **Model** — gradient-boosted or the existing sklearn ensemble; report
-   **MAE overall and per rating band** (e.g. <1000, 1000-1400, ...).
-5. **Output** — `eval/results/elo_model_mae.csv` + one summary JSON.
+1. **Loader** — `loader.py` streams `eval/data/lichess_2013-01.pgn.zst`
+   (a rated Lichess monthly database, fetched from `https://database.lichess.org/`)
+   and keeps games that are `Termination: Normal`, have both Elos, are blitz/rapid
+   (`180 <= base seconds <= 1500`), and last >= 16 plies.
+2. **Features** — `features.py` mirrors the app's `MoveFeatures`
+   (`lib/elo-prediction.ts`): one Stockfish eval per position (`depth 8`,
+   `ELO_EVAL_DEPTH` env override, mates -> +-100000), then per player per game:
+   ACPL, Lichess accuracy (`103.1668 * exp(-0.04354 * acpl)`), move-quality
+   fractions with the same thresholds as `STOCKFISH_THRESHOLDS`
+   (inaccuracy 50, mistake 150, blunder 300 cp), capture/check rates, phase
+   breakdown (opening <= 12, middlegame <= 35 plies). Losses are capped at
+   20 pawns so depth-8 mate-saturation artifacts cannot dominate ACPL, and the
+   final (terminal) ply is dropped from the ACPL signal.
+3. **Split** — by **player, never by game** (leakage control), 70/15/15.
+4. **Baselines** (model must beat both): predict the mean rating; ACPL-only
+   ridge regression. A full-feature ridge is also reported.
+5. **Model** — `HistGradientBoostingRegressor`; **MAE overall + per rating
+   band** (<1000, 1000-1400, 1400-1800, 1800-2200, >=2200).
+6. **Gate** — PASS iff model MAE < every baseline MAE and < 200 Elo.
+7. **Output** — `eval/results/elo_model_mae.csv` + `elo_model_summary.json`.
 
 ## Files
-- `loader.py`      — Lichess PGN sample loader (also used by Step 6)
-- `train.py`       — baselines + model + MAE report
+- `loader.py` — Lichess PGN sample loader (also feeds Step 6 — Lichess import)
+- `features.py` — per-player-game feature extraction (Stockfish evals)
+- `run.py` — caching extractor + split + baselines + model + MAE report
+
+## Running
+```
+python3 -m eval.elo_model.run --games 400        # extract (cached) + fit
+python3 -m eval.elo_model.run --no-eval          # refit from cached features
+python3 -m eval.elo_model.run --quick            # 150-game smoke
+```
+`eval/data/` (large download) is gitignored; the features cache lives there too.

@@ -1,0 +1,27 @@
+{
+  "n_games": 1600,
+  "n_player_games": 3200,
+  "n_test_player_games": 473,
+  "mean_baseline_mae": 165.7,
+  "ridge_acpl_mae": 162.4,
+  "ridge_full_mae": 154.4,
+  "model_mae": 146.3,
+  "pass": true,
+  "bands": [
+    {
+      "band": "1000-1400",
+      "n": 90,
+      "model_mae": 231.8
+    },
+    {
+      "band": "1400-1800",
+      "n": 263,
+      "model_mae": 102.2
+    },
+    {
+      "band": "1800-2200",
+      "n": 120,
+      "model_mae": 249.2
+    }
+  ]
+}

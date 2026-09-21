@@ -40,3 +40,5 @@ build/
 
 # Misc
 *.swp
+# EVAL DATA (large downloaded fixtures)
+eval/data/
