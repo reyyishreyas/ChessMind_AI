@@ -394,6 +394,7 @@ export function ChessGame() {
             turnStartRef.current = Date.now()
             turnIdRef.current += 1
             void computeCoachHints(newState, [...moveNotations, notation], "post-move")
+            void callSuggester(newState)
           }
         }
       } catch (error) {
@@ -433,6 +434,27 @@ export function ChessGame() {
       }
     },
     [playerStats, gameStarted, playerColor],
+  )
+
+  /** Call the LLM suggester after every bot move so coach_context.suggestion is populated. The feedback model reads it on the player's next move, keeping both models consistent. */
+  const callSuggester = useCallback(
+    async (state: GameState): Promise<void> => {
+      try {
+        await fetch("/api/coach-suggest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            state,
+            playerStats: playerStats
+              ? { skillRating: playerStats.skillRating, averageAccuracy: playerStats.averageAccuracy }
+              : null,
+          }),
+        })
+      } catch {
+        // Suggester is best-effort; feedback model handles null suggestion gracefully.
+      }
+    },
+    [playerStats],
   )
 
   // Slow-play detection: if it is the player's turn and SLOW_TURN_MS elapses
