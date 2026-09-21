@@ -309,6 +309,7 @@ export function ChessGame() {
       const variance = scores.length > 1 ? scores.reduce((sum, s) => sum + Math.pow(s - ams, 2), 0) / scores.length : 0
       const stdDev = Math.sqrt(variance)
       const avgTime = moveTimes.length > 0 ? moveTimes.reduce((a, b) => a + b, 0) / moveTimes.length : 0
+      const patternMoves = replayPatternEvents(gameHistory, gameEvaluations, moveTimes, playerColor)
 
       fetch("/api/save-game", {
         method: "POST",
@@ -332,6 +333,7 @@ export function ChessGame() {
           tacticsScore: newStats.tacticsScore ?? 50,
           positionScore: newStats.positionScore ?? 50,
           endgameScore: newStats.endgameScore ?? 50,
+          patternMoves,
         }),
       }).catch(console.error)
 

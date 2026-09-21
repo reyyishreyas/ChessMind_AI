@@ -39,6 +39,7 @@ python3 -m eval.bot_calibration.fit_elo
 - **elo_model**: does our Elo regression beat "predict the mean" and ACPL-only?
 - **grounding**: how often does the coach say things that aren't true on the board?
 - **pattern_profile** (`node --test eval/pattern_profile/pattern_profile.test.ts`):
-  the `lib/pattern-profile.ts` profiler — phase/piece/time findings and the
-  `replayPatternEvents` board replay that feeds it from a real game history —
-  must produce exact, deterministic facts (silence when support is tiny).
+  the `lib/pattern-profile.ts` profiler — phase/piece/time findings, the
+  skill scores, the `replayPatternEvents` board replay, and the
+  `summarizePatterns` cross-game reducer — must produce exact, deterministic
+  facts (silence when support is tiny; single-game quirks never recur).

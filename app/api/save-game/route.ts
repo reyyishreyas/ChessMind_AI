@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import type { PatternMoveEvent } from "@/lib/pattern-profile"
 
 export async function POST(req: Request) {
   const supabase = await createClient()
@@ -31,6 +32,7 @@ export async function POST(req: Request) {
     tacticsScore,
     positionScore,
     endgameScore,
+    patternMoves,
   } = body
 
   try {
@@ -41,25 +43,50 @@ export async function POST(req: Request) {
     const currentBotEloInt = Math.round(Number(currentBotElo) || aiEloInt)
 
     // Save game stats
-    const { error: gameError } = await supabase.from("game_stats").insert({
-      user_id: user.id,
-      result,
-      player_color: playerColor,
-      ai_elo: aiEloInt,
-      total_moves: totalMoves,
-      excellent_moves: excellentMoves,
-      good_moves: goodMoves,
-      inaccurate_moves: inaccurateMoves,
-      mistakes,
-      blunders,
-      ams,
-      std_deviation: stdDeviation,
-      avg_time_per_move: avgTimePerMove,
-      player_elo_before: playerEloBeforeInt,
-      player_elo_after: playerEloAfterInt,
-    })
+    const { data: gameRow, error: gameError } = await supabase
+      .from("game_stats")
+      .insert({
+        user_id: user.id,
+        result,
+        player_color: playerColor,
+        ai_elo: aiEloInt,
+        total_moves: totalMoves,
+        excellent_moves: excellentMoves,
+        good_moves: goodMoves,
+        inaccurate_moves: inaccurateMoves,
+        mistakes,
+        blunders,
+        ams,
+        std_deviation: stdDeviation,
+        avg_time_per_move: avgTimePerMove,
+        player_elo_before: playerEloBeforeInt,
+        player_elo_after: playerEloAfterInt,
+      })
+      .select("id")
+      .single()
 
     if (gameError) throw gameError
+
+    // Persist per-move pattern events (used by cross-game profiling)
+    const gameId = gameRow?.id
+    if (gameId && Array.isArray(patternMoves) && patternMoves.length > 0) {
+      const { error: movesError } = await supabase.from("game_moves").insert(
+        (patternMoves as PatternMoveEvent[]).map((m) => ({
+          user_id: user.id,
+          game_id: gameId,
+          move_no: m.moveNo,
+          square_from: m.squareFrom,
+          square_to: m.squareTo,
+          piece: m.piece,
+          grade: m.grade,
+          centipawn_loss: Math.round(Number(m.centipawnLoss) || 0),
+          is_capture: Boolean(m.isCapture),
+          is_check: Boolean(m.isCheck),
+          time_ms: m.timeMs,
+        }))
+      )
+      if (movesError) throw movesError
+    }
 
     // Update player profile
     const { data: profile } = await supabase.from("player_profiles").select("*").eq("id", user.id).single()

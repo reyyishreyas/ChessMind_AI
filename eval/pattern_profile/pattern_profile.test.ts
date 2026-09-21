@@ -8,6 +8,7 @@ import {
   patternFindings,
   replayPatternEvents,
   scoresFromEvents,
+  summarizePatterns,
   type MoveGrade,
   type PatternMoveEvent,
 } from "../../lib/pattern-profile.ts"
@@ -153,6 +154,52 @@ test("scores stay null with insufficient evidence", () => {
   assert.equal(scores.tactics, null) // only 1 tactical move
   assert.equal(scores.position, null) // only 1 quiet move
   assert.equal(scores.endgame, null)
+})
+
+function bishopBlunderGame(extraEndgameMoves: boolean): PatternMoveEvent[] {
+  return [
+    GOOD(2, 1000, "p"),
+    GOOD(4, 1000, "p"),
+    GOOD(6, 1000, "p"),
+    GOOD(8, 1000, "p"),
+    BLUNDER(10, 900, "b"),
+    BLUNDER(12, 1100, "b"),
+    BLUNDER(14, 850, "b"),
+    GOOD(16, 950, "b"),
+    ...(extraEndgameMoves ? [GOOD(50, 900, "p"), GOOD(52, 900, "p")] : []),
+  ]
+}
+
+test("summarizePatterns blends games and surfaces recurring findings", () => {
+  const g1 = buildPatternProfile(bishopBlunderGame(false))
+  const g2 = buildPatternProfile(bishopBlunderGame(true))
+  const summary = summarizePatterns([g1, g2])
+
+  assert.equal(summary.games, 2)
+  assert.equal(summary.totalMoves, 18)
+  assert.ok(summary.recurringFindings.some((f) => f.id === "piece-blunder-b" && f.games === 2))
+  assert.deepEqual(summary.topBlunderPiece?.piece, "b")
+  assert.deepEqual(summary.topBlunderPiece?.blunders, 6)
+  // g1: (5*85 + 3*15)/8 = 58.75 ; g2: (7*85 + 3*15)/10 = 64.0
+  // weighted avg = (58.75*8 + 64.0*10)/18 = 62 (rounded)
+  assert.equal(summary.avgAccuracy, 62)
+  // blunders sit around move 10-14 -> middlegame is the worst phase (50) in both
+  assert.deepEqual(summary.worstPhase?.phase, "middlegame")
+})
+
+test("summarizePatterns drops single-game quirks from recurring findings", () => {
+  const g1 = buildPatternProfile([
+    BLUNDER(2, 1000, "p"),
+    BLUNDER(4, 1100, "p"),
+    BLUNDER(6, 900, "p"),
+    GOOD(8, 1200, "p"),
+    GOOD(10, 32000, "p"),
+    GOOD(12, 33000, "p"),
+  ])
+  const g2 = buildPatternProfile([GOOD(2, 1000, "p"), GOOD(4, 1000, "p"), GOOD(6, 1000, "p"), GOOD(8, 1000, "p")])
+  const summary = summarizePatterns([g1, g2])
+  // time-pressure fired only in g1 -> not recurring
+  assert.ok(!summary.recurringFindings.some((f) => f.id === "time-pressure"))
 })
 
 test("capture sharpness is reported", () => {

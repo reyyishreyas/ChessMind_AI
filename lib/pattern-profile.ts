@@ -290,6 +290,87 @@ function sliceScore(events: PatternMoveEvent[]): number | null {
   return Math.round(events.reduce((a, e) => a + GRADE_ACCURACY[e.grade], 0) / events.length)
 }
 
+export type CrossGameSummary = {
+  games: number
+  totalMoves: number
+  avgAccuracy: number
+  avgCpl: number
+  topBlunderPiece: { piece: PieceType; blunders: number; rate: number } | null
+  worstPhase: { phase: PhaseId; accuracy: number } | null
+  recurringFindings: { id: string; games: number }[]
+}
+
+/**
+ * Reduce several per-game profiles into cross-game pattern facts. A finding is
+ * only "recurring" if it fired in at least two games — single-game quirks are
+ * not reported. Everything stays a pure function of measured profiles.
+ */
+export function summarizePatterns(profiles: PatternProfile[]): CrossGameSummary {
+  const useful = profiles.filter((p) => p.nMoves >= 4)
+  const totalMoves = profiles.reduce((a, p) => a + p.nMoves, 0)
+  const allCpls: number[] = []
+  const phaseAcc = new Map<PhaseId, { n: number; acc: number }>()
+  const pieceBlunders = new Map<PieceType, { n: number; b: number }>()
+
+  for (const p of profiles) {
+    for (const phase of p.phases) {
+      if (phase.avgAccuracy === null) continue
+      const cur = phaseAcc.get(phase.phase) ?? { n: 0, acc: 0 }
+      cur.n += phase.n
+      cur.acc += phase.avgAccuracy * phase.n
+      phaseAcc.set(phase.phase, cur)
+    }
+    for (const piece of p.pieces) {
+      const cur = pieceBlunders.get(piece.piece) ?? { n: 0, b: 0 }
+      cur.n += piece.n
+      cur.b += piece.blunders
+      pieceBlunders.set(piece.piece, cur)
+    }
+    // Reconstruct cpl pool per game only in aggregate form (avg cpl weighted by moves).
+    allCpls.push(p.avgCpl * p.nMoves)
+  }
+
+  const recurring = new Map<string, number>()
+  for (const p of useful) {
+    const seen = new Set<string>()
+    for (const f of patternFindings(p)) {
+      if (seen.has(f.id)) continue
+      seen.add(f.id)
+      recurring.set(f.id, (recurring.get(f.id) ?? 0) + 1)
+    }
+  }
+  const accWeighted = profiles.reduce((a, p) => a + p.avgAccuracy * p.nMoves, 0)
+
+  let worstPhase: CrossGameSummary["worstPhase"] = null
+  for (const [phase, { n, acc }] of phaseAcc) {
+    if (n < 4) continue
+    const avg = acc / n
+    if (!worstPhase || avg < worstPhase.accuracy) worstPhase = { phase, accuracy: Math.round(avg) }
+  }
+
+  let topBlunderPiece: CrossGameSummary["topBlunderPiece"] = null
+  for (const [piece, { n, b }] of pieceBlunders) {
+    if (n < 6) continue
+    const rate = b / n
+    if (!topBlunderPiece || rate > topBlunderPiece.rate) {
+      topBlunderPiece = { piece, blunders: b, rate }
+    }
+  }
+
+  return {
+    games: profiles.length,
+    totalMoves,
+    avgAccuracy: totalMoves > 0 ? Math.round(accWeighted / totalMoves) : 0,
+    avgCpl: totalMoves > 0 ? Math.round(allCpls.reduce((a, b) => a + b, 0) / totalMoves) : 0,
+    topBlunderPiece,
+    worstPhase,
+    recurringFindings: [...recurring.entries()]
+      .filter(([, games]) => games >= 2)
+      .map(([id, games]) => ({ id, games }))
+      .sort((a, b) => b.games - a.games),
+  }
+}
+
 type PlayerMove = {
   from: Square
   to: Square
