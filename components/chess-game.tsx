@@ -39,6 +39,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { CoachInsights } from "./coach-insights"
 
+let chessGame_lastEloWarn = 0
+
 export function ChessGame() {
   const [gameState, setGameState] = useState<GameState>(createInitialState())
   const [gameHistory, setGameHistory] = useState<GameState[]>([createInitialState()])
@@ -458,7 +460,12 @@ export function ChessGame() {
               console.log("🎮 Difficulty updated to:", newDifficulty)
               setCurrentDifficulty(newDifficulty)
             } else {
-              console.warn("⚠️ ELO prediction returned success=false, keeping current bot ELO")
+              // Backend optional: warn at most ~once a minute instead of per move
+              const now = Date.now()
+              if (!chessGame_lastEloWarn || now - chessGame_lastEloWarn > 60_000) {
+                chessGame_lastEloWarn = now
+                console.warn("⚠️ ELO prediction returned success=false, keeping current bot ELO")
+              }
             }
           } else {
             console.warn("⚠️ Invalid features for ELO prediction:", features)

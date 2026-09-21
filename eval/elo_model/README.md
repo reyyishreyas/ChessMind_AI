@@ -9,15 +9,18 @@ so the app's in-game Elo estimator can claim "not a paraphrase of ACPL".
    (a rated Lichess monthly database, fetched from `https://database.lichess.org/`)
    and keeps games that are `Termination: Normal`, have both Elos, are blitz/rapid
    (`180 <= base seconds <= 1500`), and last >= 16 plies.
-2. **Features** — `features.py` mirrors the app's `MoveFeatures`
-   (`lib/elo-prediction.ts`): one Stockfish eval per position (`depth 8`,
-   `ELO_EVAL_DEPTH` env override, mates -> +-100000), then per player per game:
-   ACPL, Lichess accuracy (`103.1668 * exp(-0.04354 * acpl)`), move-quality
-   fractions with the same thresholds as `STOCKFISH_THRESHOLDS`
-   (inaccuracy 50, mistake 150, blunder 300 cp), capture/check rates, phase
-   breakdown (opening <= 12, middlegame <= 35 plies). Losses are capped at
-   20 pawns so depth-8 mate-saturation artifacts cannot dominate ACPL, and the
-   final (terminal) ply is dropped from the ACPL signal.
+2. **Features** — `features.py` builds per-player-per-game aggregates from the
+   same signals the app measures (per-move Stockfish evals, and the same
+   move-quality thresholds as `STOCKFISH_THRESHOLDS`): ACPL, Lichess accuracy
+   (`103.1668 * exp(-0.04354 * acpl)`), move-quality fractions (inaccuracy 50,
+   mistake 150, blunder 300 cp), capture/check rates, and phase breakdown
+   (opening <= 12, middlegame <= 35 plies). Losses are capped at 20 pawns so
+   depth-8 mate-saturation artifacts cannot dominate ACPL, and the final
+   (terminal) ply is dropped from the ACPL signal.
+   Note: this validates that the app's *measured signals* predict rating. The
+   app's live estimator treats the same signals per-move via the optional
+   FastAPI backend (`app/api/predict-elo`), so this suite is a proxy proof —
+   the live per-move pipeline is not re-trained here.
 3. **Split** — by **player, never by game** (leakage control), 70/15/15.
 4. **Baselines** (model must beat both): predict the mean rating; ACPL-only
    ridge regression. A full-feature ridge is also reported.

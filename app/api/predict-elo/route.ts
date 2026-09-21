@@ -5,10 +5,24 @@ export const maxDuration = 30
 // FastAPI backend URL - adjust this to your FastAPI server
 const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:8000"
 
+// The ML backend is optional. When it's unreachable we return 200 with
+// success:false so the client keeps the current bot ELO — silently, without
+// spamming per-request 503s. Log the degradation at most once per few minutes.
+let lastFallbackLog = 0
+
+function atMostEvery(ms: number): boolean {
+  const now = Date.now()
+  if (now - lastFallbackLog > ms) {
+    lastFallbackLog = now
+    return true
+  }
+  return false
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    
+
     // Forward request to FastAPI backend
     const response = await fetch(`${FASTAPI_URL}/predict-elo`, {
       method: "POST",
@@ -26,25 +40,26 @@ export async function POST(req: Request) {
       } catch {
         errorDetails = await response.text()
       }
-      // Don't log connection errors - backend might not be running (expected)
-      if (!errorDetails.includes("ECONNREFUSED") && !errorDetails.includes("fetch failed")) {
-        console.error("FastAPI error:", errorDetails)
+      if (atMostEvery(120_000)) {
+        console.warn("ELO prediction backend returned an error (first seen in a while):", errorDetails)
       }
       return NextResponse.json(
-        { error: "ELO prediction failed", details: errorDetails, success: false, predicted_elo: 1200, elo_change: 0 },
-        { status: response.status }
+        { error: "ELO prediction failed", details: errorDetails, success: false, predicted_elo: 1200, elo_change: 0, fallback: true },
+        { status: 200 }
       )
     }
 
     const data = await response.json()
     return NextResponse.json(data)
   } catch (error) {
-    // Don't log connection errors - backend might not be running (expected behavior)
+    // Don't log connection errors - backend might not be running (expected)
     if (error instanceof TypeError && error.message.includes("fetch failed")) {
-      // Backend not available - return error response but don't log
+      if (atMostEvery(120_000)) {
+        console.warn("ELO prediction backend not reachable; keeping current bot ELO")
+      }
       return NextResponse.json(
-        { error: "Backend not available", success: false, predicted_elo: 1200, elo_change: 0 },
-        { status: 503 }
+        { error: "Backend not available", success: false, predicted_elo: 1200, elo_change: 0, fallback: true },
+        { status: 200 }
       )
     }
     // Only log unexpected errors
