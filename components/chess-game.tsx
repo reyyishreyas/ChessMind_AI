@@ -41,6 +41,71 @@ import { CoachInsights } from "./coach-insights"
 
 let chessGame_lastEloWarn = 0
 
+type CoachVerdict = {
+  move_quality: string
+  accuracy_score: number
+  blunder_risk: "low" | "medium" | "high"
+  flag3: number
+}
+
+type CoachStreamHandlers = {
+  onPreview: (verdict: CoachVerdict) => void
+  onToken?: (draft: string) => void
+  onDone: (analysis: string, done: { success: boolean }) => void
+}
+
+/**
+ * Instant-feedback coach stream (SSE). Emits a deterministic verdict first
+ * (so Elo features/persistence can start immediately), then streams the coach
+ * sentence and finishes with a `done` event carrying the cleaned text.
+ * Throws only when the stream never delivered a verdict (client then falls
+ * back to the JSON route for a full-quality analysis).
+ */
+async function streamCoachAnalysis(body: unknown, handlers: CoachStreamHandlers): Promise<void> {
+  const res = await fetch("/api/analyze-move/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok || !res.body) throw new Error(`Coach stream failed (${res.status})`)
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+  let sawPreview = false
+  let analysis = ""
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    let boundary: number
+    while ((boundary = buffer.indexOf("\n\n")) >= 0) {
+      const raw = buffer.slice(0, boundary)
+      buffer = buffer.slice(boundary + 2)
+      const event = raw.split("\n").find((l) => l.startsWith("event:"))?.slice(6).trim() ?? ""
+      const dataLine = raw.split("\n").find((l) => l.startsWith("data:"))?.slice(5).trim()
+      if (!dataLine) continue
+
+      const data = JSON.parse(dataLine)
+
+      if (event === "preview") {
+        sawPreview = true
+        handlers.onPreview(data)
+      } else if (event === "token") {
+        analysis += data
+        handlers.onToken?.(analysis)
+      } else if (event === "done") {
+        if (data.analysis) analysis = data.analysis
+        handlers.onDone(analysis, data)
+      }
+    }
+  }
+
+  if (!sawPreview) throw new Error("Coach stream ended without a verdict")
+}
+
 export function ChessGame() {
   const [gameState, setGameState] = useState<GameState>(createInitialState())
   const [gameHistory, setGameHistory] = useState<GameState[]>([createInitialState()])
@@ -352,68 +417,29 @@ export function ChessGame() {
             : prev
         )
       }
-      // Get Gemini analysis with features - ALWAYS request for ALL moves
-      const response = await fetch("/api/analyze-move", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          gameState: stateAfter,
-          stateBefore,
-          evaluation,
-          moveHistory: moveNotations,
-          playerStats: playerStats
-            ? { skillRating: playerStats.skillRating, averageAccuracy: playerStats.averageAccuracy }
-            : null,
-          allEvaluations: gameEvaluations,
-          moveTimes,
-          botMove,
-          patternMoves,
-        }),
-      })
-      if (!response.ok) {
-        throw new Error("Gemini analysis failed")
-      }
-      let geminiData = await response.json()
-      const hasGemini = !!(geminiData && geminiData.move_quality && typeof geminiData.accuracy_score === "number" && geminiData.blunder_risk !== undefined)
-      if (!hasGemini) {
-        try {
-          const retry = await fetch("/api/analyze-move", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              gameState: stateAfter,
-              stateBefore,
-              evaluation,
-              moveHistory: moveNotations,
-              playerStats: playerStats ? { skillRating: playerStats.skillRating, averageAccuracy: playerStats.averageAccuracy } : null,
-              allEvaluations: gameEvaluations,
-              moveTimes,
-              botMove,
-              patternMoves,
-            }),
-          })
-          geminiData = await retry.json()
-        } catch {}
-      }
-      if (geminiData.analysis) {
-        setAIAnalysis(geminiData.analysis)
+      // Get coaching feedback with features - ALWAYS request for ALL moves
+      const reqBody = {
+        gameState: stateAfter,
+        stateBefore,
+        evaluation,
+        moveHistory: moveNotations,
+        playerStats: playerStats
+          ? { skillRating: playerStats.skillRating, averageAccuracy: playerStats.averageAccuracy }
+          : null,
+        allEvaluations: gameEvaluations,
+        moveTimes,
+        botMove,
+        patternMoves,
       }
 
-      // Collect features and predict ELO (only if we have valid data)
       // Model is trained on: move_number,start_eval,end_eval,delta_eval,move_quality,
       // time_per_move,accuracy_score,blunder_risk,flag1,flag2,flag3,last_elo,
       // phase_Endgame,phase_Middlegame,phase_Opening
-      console.log("📋 ELO Prediction Check:", {
-        hasPlayerStats: !!playerStats,
-        hasGeminiData: !!geminiData,
-        hasMoveQuality: !!geminiData?.move_quality,
-        moveQuality: geminiData?.move_quality,
-        botElo,
-        condition: !!(playerStats && botElo),
-      })
-
-      const readyForModel = !!(playerStats && botElo && geminiData?.move_quality && typeof geminiData?.accuracy_score === "number" && geminiData?.blunder_risk !== undefined)
-      if (readyForModel) {
+      let predictionRan = false
+      const runEloPrediction = async (verdict: CoachVerdict) => {
+        if (predictionRan) return
+        predictionRan = true
+        if (!playerStats || !botElo) return
         try {
           console.log("✨ Starting ELO prediction process...")
           const features = await collectMoveFeatures(
@@ -426,10 +452,10 @@ export function ChessGame() {
             botElo, // last_elo = bot's current ELO (model predicts new bot ELO)
             evaluation,
             {
-              move_quality: geminiData.move_quality,
-              accuracy_score: geminiData.accuracy_score,
-              blunder_risk: geminiData.blunder_risk,
-              flag3: geminiData.flag3 ?? 0,
+              move_quality: verdict.move_quality,
+              accuracy_score: verdict.accuracy_score,
+              blunder_risk: verdict.blunder_risk,
+              flag3: verdict.flag3 ?? 0,
             },
             playerColor
           )
@@ -474,8 +500,61 @@ export function ChessGame() {
           // Log errors for debugging but do NOT adjust bot ELO heuristically
           console.error("❌ Error in ELO prediction (model call):", error)
         }
-      } else {
-        console.warn("Gemini data missing; skipping ELO prediction for this move")
+      }
+
+      try {
+        // Instant-feedback path: the deterministic verdict streams in first
+        // (so Elo features/persistence run without waiting), then the coach
+        // sentence appears word by word instead of blocking ~3s.
+        await streamCoachAnalysis(reqBody, {
+          onPreview: (verdict) => {
+            setAIAnalysis(getDefaultAnalysis(evaluation, from, to))
+            setIsAnalyzing(false)
+            void runEloPrediction(verdict)
+          },
+          onToken: (draft) => setAIAnalysis(draft),
+          onDone: (analysis) => {
+            if (analysis) setAIAnalysis(analysis)
+          },
+        })
+      } catch (streamError) {
+        // Fall back to the JSON route (original behavior, still full quality).
+        console.warn("Coach stream unavailable; falling back to JSON analysis:", streamError)
+        const response = await fetch("/api/analyze-move", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(reqBody),
+        })
+        if (!response.ok) {
+          throw new Error("Gemini analysis failed")
+        }
+        let geminiData = await response.json()
+        const hasGemini = !!(geminiData && geminiData.move_quality && typeof geminiData.accuracy_score === "number" && geminiData.blunder_risk !== undefined)
+        if (!hasGemini) {
+          try {
+            const retry = await fetch("/api/analyze-move", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(reqBody),
+            })
+            geminiData = await retry.json()
+          } catch {}
+        }
+        if (geminiData.analysis) {
+          setAIAnalysis(geminiData.analysis)
+        }
+
+        const readyForModel = !!(playerStats && botElo && geminiData?.move_quality && typeof geminiData?.accuracy_score === "number" && geminiData?.blunder_risk !== undefined)
+        if (readyForModel) {
+          await runEloPrediction({
+            move_quality: geminiData.move_quality,
+            accuracy_score: geminiData.accuracy_score,
+            blunder_risk: geminiData.blunder_risk,
+            flag3: geminiData.flag3 ?? 0,
+          })
+        } else {
+          console.warn("Gemini data missing; skipping ELO prediction for this move")
+        }
       }
     } catch (error) {
       console.error("Failed to get AI analysis:", error)

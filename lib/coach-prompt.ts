@@ -87,6 +87,23 @@ Return ONLY valid JSON:
 Return only the JSON object, no other text.`
 }
 
+/**
+ * Streaming variant used by the instant-feedback path. The VERIFIED FACTS
+ * header and warning rules are byte-identical to buildCoachPrompt (same
+ * grounded facts, same quality); only the requested output differs — a single
+ * plain sentence instead of a JSON object, so it can be streamed token by
+ * token and shown as soon as the model starts talking.
+ */
+export function buildCoachSentencePrompt(input: CoachPromptInput): string {
+  const jsonPrompt = buildCoachPrompt(input)
+  const tailStart = jsonPrompt.indexOf("\n\nReturn ONLY valid JSON:")
+  const groundedHeader = tailStart >= 0 ? jsonPrompt.slice(0, tailStart) : jsonPrompt
+
+  return `${groundedHeader}
+
+Return ONLY the coaching sentence: exactly one short sentence, at most 15 words, naming the move, coaching tone, no filler. Plain text only — no JSON, no quotes, no labels, no "Analysis:" prefix.`
+}
+
 const PIECE_NAMES: Record<string, string> = {
   p: "pawn",
   n: "knight",

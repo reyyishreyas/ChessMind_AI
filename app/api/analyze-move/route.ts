@@ -1,4 +1,5 @@
 import { generateJSON } from "@/lib/llm"
+import { normalizeMoveQuality } from "@/lib/coach-verdict"
 import { type GameState, gameStateToFEN } from "@/lib/chess-engine"
 import { type MotifDetail, type MotifId, detectMotifDetails, detectMotifs } from "@/lib/tactics"
 import type { MoveEvaluation } from "@/lib/adaptive-ai"
@@ -117,17 +118,6 @@ export async function POST(req: Request) {
   } catch (error) {
     return Response.json({ error: "Model request failed", success: false }, { status: 502 })
   }
-}
-
-function normalizeMoveQuality(quality: string): string {
-  const normalized = quality.toLowerCase()
-  if (normalized.includes("brilliant")) return "Brilliant"
-  if (normalized.includes("perfect") || normalized.includes("excellent")) return "Perfect"
-  if (normalized.includes("good")) return "Good"
-  if (normalized.includes("inaccuracy")) return "Inaccuracy"
-  if (normalized.includes("mistake")) return "Mistake"
-  if (normalized.includes("blunder")) return "Blunder"
-  return "Good"
 }
 
 // Cap the length of pattern facts so the prompt stays small (faster prefill).

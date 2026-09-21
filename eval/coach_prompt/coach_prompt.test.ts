@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import { createInitialState, makeMove, type GameState, type Piece } from "../../lib/chess-engine.ts"
-import { buildCoachPrompt, describeMotifs, sanFor } from "../../lib/coach-prompt.ts"
+import { buildCoachPrompt, buildCoachSentencePrompt, describeMotifs, sanFor } from "../../lib/coach-prompt.ts"
 import { detectMotifDetails } from "../../lib/tactics.ts"
 import type { MoveEvaluation } from "../../lib/adaptive-ai.ts"
 
@@ -146,4 +146,15 @@ test("sanFor renders algebraic notation consistent with the player move", () => 
   const after = makeMove(before, "e2", "e4")!
   const san = sanFor(before, after, "e2", "e4")
   assert.equal(san, "e4")
+})
+
+test("sentence prompt keeps the exact VERIFIED FACTS header but drops the JSON schema", () => {
+  const prompt = buildCoachSentencePrompt(buildInput())
+  assert.match(prompt, /VERIFIED FACTS \(all correct; never contradict or go beyond them\):/)
+  assert.match(prompt, /- Player played: e4 \(from e2 to e4\)/)
+  assert.match(prompt, /- Move grade: good; centipawn loss: 21 cp/)
+  assert.match(prompt, /- Player ELO rating: ~1200/)
+  assert.ok(!prompt.includes("Return ONLY valid JSON:"))
+  assert.ok(!prompt.includes('"analysis"'))
+  assert.match(prompt, /Plain text only/)
 })
