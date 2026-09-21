@@ -28,6 +28,9 @@ export async function POST(req: Request) {
     playerEloBefore,
     playerEloAfter,
     currentBotElo,
+    tacticsScore,
+    positionScore,
+    endgameScore,
   } = body
 
   try {
@@ -75,6 +78,9 @@ export async function POST(req: Request) {
           total_mistakes: profile.total_mistakes + mistakes,
           total_inaccuracies: profile.total_inaccuracies + inaccurateMoves,
           total_excellent_moves: profile.total_excellent_moves + excellentMoves,
+          tactics_score: Math.max(0, Math.min(100, Math.round(Number(tacticsScore) || 50))),
+          position_score: Math.max(0, Math.min(100, Math.round(Number(positionScore) || 50))),
+          endgame_score: Math.max(0, Math.min(100, Math.round(Number(endgameScore) || 50))),
           current_streak:
             result === 1
               ? Math.max(0, profile.current_streak) + 1

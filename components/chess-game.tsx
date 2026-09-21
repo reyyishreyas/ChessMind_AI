@@ -29,7 +29,7 @@ import {
 } from "@/lib/adaptive-ai"
 import { eloToDifficulty, getAdaptiveDifficulty, STOCKFISH_LEVELS } from "@/lib/stockfish-eval"
 import { chooseBotMove } from "@/lib/bot"
-import { replayPatternEvents } from "@/lib/pattern-profile"
+import { replayPatternEvents, scoresFromEvents } from "@/lib/pattern-profile"
 import {
   collectMoveFeatures,
   predictElo,
@@ -105,9 +105,9 @@ export function ChessGame() {
               averageAccuracy: profile.average_accuracy,
               currentStreak: profile.current_streak,
               skillRating: profile.skill_rating,
-              tacticsScore: 50,
-              positionScore: 50,
-              endgameScore: 50,
+              tacticsScore: profile.tactics_score ?? 50,
+              positionScore: profile.position_score ?? 50,
+              endgameScore: profile.endgame_score ?? 50,
               totalCentipawnLoss: 0,
               totalMovesAnalyzed: 0,
             })
@@ -329,6 +329,9 @@ export function ChessGame() {
           playerEloBefore: Math.round(prevElo),
           playerEloAfter: newStats.skillRating, // Already rounded above
           currentBotElo: Math.round(botElo),
+          tacticsScore: newStats.tacticsScore ?? 50,
+          positionScore: newStats.positionScore ?? 50,
+          endgameScore: newStats.endgameScore ?? 50,
         }),
       }).catch(console.error)
 
@@ -391,6 +394,19 @@ export function ChessGame() {
     setIsAnalyzing(true)
     try {
       const patternMoves = replayPatternEvents(gameHistory, gameEvaluations, moveTimes, playerColor)
+      const scores = scoresFromEvents(patternMoves)
+      if (playerStats) {
+        setPlayerStats((prev) =>
+          prev
+            ? {
+                ...prev,
+                tacticsScore: scores.tactics ?? prev.tacticsScore,
+                positionScore: scores.position ?? prev.positionScore,
+                endgameScore: scores.endgame ?? prev.endgameScore,
+              }
+            : prev
+        )
+      }
       // Get Gemini analysis with features - ALWAYS request for ALL moves
       const response = await fetch("/api/analyze-move", {
         method: "POST",

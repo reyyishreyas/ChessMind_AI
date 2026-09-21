@@ -259,6 +259,37 @@ export function describePattern(profile: PatternProfile): string {
   return findings.map((f) => f.text).join(" ")
 }
 
+export type SkillScores = {
+  tactics: number | null
+  position: number | null
+  endgame: number | null
+}
+
+/**
+ * Derive the three player-skill scores (tactics / position / endgame) from the
+ * measured moves. Like everything else here they are pure functions of the
+ * events, and are null until enough evidence exists (>= 2 moves of that kind).
+ * Definitions (all from grade accuracy of the relevant slice of moves):
+ *  - tactics: capture and check moves (real tactical events we can observe)
+ *  - position: quiet, non-tactical moves
+ *  - endgame: moves after move 35
+ */
+export function scoresFromEvents(events: PatternMoveEvent[]): SkillScores {
+  const tactical = events.filter((e) => e.isCapture || e.isCheck)
+  const quiet = events.filter((e) => !e.isCapture && !e.isCheck)
+  const endgame = events.filter((e) => phaseOf(e.moveNo) === "endgame")
+  return {
+    tactics: sliceScore(tactical),
+    position: sliceScore(quiet),
+    endgame: sliceScore(endgame),
+  }
+}
+
+function sliceScore(events: PatternMoveEvent[]): number | null {
+  if (events.length < 2) return null
+  return Math.round(events.reduce((a, e) => a + GRADE_ACCURACY[e.grade], 0) / events.length)
+}
+
 type PlayerMove = {
   from: Square
   to: Square

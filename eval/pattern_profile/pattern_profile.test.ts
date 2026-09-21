@@ -7,6 +7,7 @@ import {
   describePattern,
   patternFindings,
   replayPatternEvents,
+  scoresFromEvents,
   type MoveGrade,
   type PatternMoveEvent,
 } from "../../lib/pattern-profile.ts"
@@ -127,6 +128,31 @@ test("steady play and inconsistent play are recognized", () => {
   const swingyProfile = buildPatternProfile(swingy)
   assert.ok(patternFindings(swingyProfile).some((f) => f.id === "inconsistent"))
   assert.ok(!patternFindings(swingyProfile).some((f) => f.id === "steady"))
+})
+
+test("scores derive tactics/position/endgame honestly", () => {
+  // tactical (capture/check): one good + one brilliant -> (85+100)/2 = 93 (round)
+  // quiet: three goods -> 85
+  // endgame (moveNo > 35): none -> null
+  const events = [
+    evt(6, "good", 1000, "e4", "d5", "p", 20, true),
+    evt(12, "brilliant", 900, "f3", "e5", "n", -60, true),
+    GOOD(4, 1000, "p"),
+    GOOD(8, 1000, "p"),
+    GOOD(10, 1000, "p"),
+  ]
+  const scores = scoresFromEvents(events)
+  assert.equal(scores.tactics, 93)
+  assert.equal(scores.position, 85)
+  assert.equal(scores.endgame, null)
+})
+
+test("scores stay null with insufficient evidence", () => {
+  const barely = [evt(4, "good", 1000, "e4", "d5", "p", 20, true), GOOD(6, 1000, "p")]
+  const scores = scoresFromEvents(barely)
+  assert.equal(scores.tactics, null) // only 1 tactical move
+  assert.equal(scores.position, null) // only 1 quiet move
+  assert.equal(scores.endgame, null)
 })
 
 test("capture sharpness is reported", () => {

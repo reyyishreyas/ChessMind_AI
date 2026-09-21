@@ -58,6 +58,28 @@ export function PlayerStatsPanel({ stats }: PlayerStatsPanelProps) {
           <Progress value={stats.averageAccuracy} className="h-2" />
         </div>
 
+        {/* Skill Scores */}
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Skill Scores</p>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Tactics</span>
+              <span className="font-bold text-foreground">{stats.tacticsScore}%</span>
+            </div>
+            <Progress value={stats.tacticsScore} className="h-1.5" />
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Position</span>
+              <span className="font-bold text-foreground">{stats.positionScore}%</span>
+            </div>
+            <Progress value={stats.positionScore} className="h-1.5" />
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Endgame</span>
+              <span className="font-bold text-foreground">{stats.endgameScore}%</span>
+            </div>
+            <Progress value={stats.endgameScore} className="h-1.5" />
+          </div>
+        </div>
+
         {/* Game Stats */}
         <div className="grid grid-cols-3 gap-2 pt-2">
           <div className="text-center p-2 bg-secondary/50 rounded-lg">
