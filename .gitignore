@@ -42,3 +42,6 @@ build/
 *.swp
 # EVAL DATA (large downloaded fixtures)
 eval/data/
+
+# Local offline database (SQLite) — per-machine personal data
+data/

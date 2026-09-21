@@ -43,10 +43,10 @@ else
     echo -e "${RED}❌ GEMINI_API_KEY missing${NC}"
 fi
 
-if grep -q "NEXT_PUBLIC_SUPABASE_URL" /Users/reyyishreyas/Desktop/chessv2/.env.local; then
-    echo -e "${GREEN}✅ Supabase configured${NC}"
+if [ -f "/Users/reyyishreyas/Desktop/ChessMind_AI/data/local.db" ]; then
+    echo -e "${GREEN}✅ Offline local database present (data/local.db)${NC}"
 else
-    echo -e "${RED}❌ Supabase not configured${NC}"
+    echo -e "${YELLOW}⚠️  No local DB yet — created automatically on first request${NC}"
 fi
 
 # Check 3: Model file

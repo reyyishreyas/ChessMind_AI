@@ -1,17 +1,10 @@
-import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { saveGame } from "@/lib/db/db"
 import type { PatternMoveEvent } from "@/lib/pattern-profile"
 
+export const dynamic = "force-dynamic"
+
 export async function POST(req: Request) {
-  const supabase = await createClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-
   const body = await req.json()
   const {
     result, // 1, 0.5, or 0
@@ -36,94 +29,27 @@ export async function POST(req: Request) {
   } = body
 
   try {
-    // Round all ELO values to integers (database expects integers)
-    const aiEloInt = Math.round(Number(aiElo) || 0)
-    const playerEloBeforeInt = Math.round(Number(playerEloBefore) || 0)
-    const playerEloAfterInt = Math.round(Number(playerEloAfter) || 0)
-    const currentBotEloInt = Math.round(Number(currentBotElo) || aiEloInt)
-
-    // Save game stats
-    const { data: gameRow, error: gameError } = await supabase
-      .from("game_stats")
-      .insert({
-        user_id: user.id,
-        result,
-        player_color: playerColor,
-        ai_elo: aiEloInt,
-        total_moves: totalMoves,
-        excellent_moves: excellentMoves,
-        good_moves: goodMoves,
-        inaccurate_moves: inaccurateMoves,
-        mistakes,
-        blunders,
-        ams,
-        std_deviation: stdDeviation,
-        avg_time_per_move: avgTimePerMove,
-        player_elo_before: playerEloBeforeInt,
-        player_elo_after: playerEloAfterInt,
-      })
-      .select("id")
-      .single()
-
-    if (gameError) throw gameError
-
-    // Persist per-move pattern events (used by cross-game profiling)
-    const gameId = gameRow?.id
-    if (gameId && Array.isArray(patternMoves) && patternMoves.length > 0) {
-      const { error: movesError } = await supabase.from("game_moves").insert(
-        (patternMoves as PatternMoveEvent[]).map((m) => ({
-          user_id: user.id,
-          game_id: gameId,
-          move_no: m.moveNo,
-          square_from: m.squareFrom,
-          square_to: m.squareTo,
-          piece: m.piece,
-          grade: m.grade,
-          centipawn_loss: Math.round(Number(m.centipawnLoss) || 0),
-          is_capture: Boolean(m.isCapture),
-          is_check: Boolean(m.isCheck),
-          time_ms: m.timeMs,
-        }))
-      )
-      if (movesError) throw movesError
-    }
-
-    // Update player profile
-    const { data: profile } = await supabase.from("player_profiles").select("*").eq("id", user.id).single()
-
-    if (profile) {
-      const { error: profileError } = await supabase
-        .from("player_profiles")
-        .update({
-          skill_rating: playerEloAfterInt, // Use rounded integer
-          current_bot_elo: currentBotEloInt,
-          games_played: profile.games_played + 1,
-          wins: profile.wins + (result === 1 ? 1 : 0),
-          losses: profile.losses + (result === 0 ? 1 : 0),
-          draws: profile.draws + (result === 0.5 ? 1 : 0),
-          total_blunders: profile.total_blunders + blunders,
-          total_mistakes: profile.total_mistakes + mistakes,
-          total_inaccuracies: profile.total_inaccuracies + inaccurateMoves,
-          total_excellent_moves: profile.total_excellent_moves + excellentMoves,
-          tactics_score: Math.max(0, Math.min(100, Math.round(Number(tacticsScore) || 50))),
-          position_score: Math.max(0, Math.min(100, Math.round(Number(positionScore) || 50))),
-          endgame_score: Math.max(0, Math.min(100, Math.round(Number(endgameScore) || 50))),
-          current_streak:
-            result === 1
-              ? Math.max(0, profile.current_streak) + 1
-              : result === 0
-                ? Math.min(0, profile.current_streak) - 1
-                : 0,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", user.id)
-
-      if (profileError) throw profileError
-    }
-
-    // Deactivate current session
-    await supabase.from("game_sessions").update({ is_active: false }).eq("user_id", user.id).eq("is_active", true)
-
+    saveGame({
+      result: Number(result),
+      player_color: playerColor,
+      ai_elo: Math.round(Number(aiElo) || 0),
+      total_moves: totalMoves,
+      excellent_moves: excellentMoves,
+      good_moves: goodMoves,
+      inaccurate_moves: inaccurateMoves,
+      mistakes,
+      blunders,
+      ams,
+      std_deviation: stdDeviation,
+      avg_time_per_move: avgTimePerMove,
+      player_elo_before: Math.round(Number(playerEloBefore) || 0),
+      player_elo_after: Math.round(Number(playerEloAfter) || 0),
+      current_bot_elo: Math.round(Number(currentBotElo) || Math.round(Number(aiElo) || 0)),
+      tactics_score: tacticsScore,
+      position_score: positionScore,
+      endgame_score: endgameScore,
+      pattern_moves: (patternMoves as PatternMoveEvent[]) ?? [],
+    })
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Save game error:", error)

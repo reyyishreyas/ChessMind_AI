@@ -1,6 +1,6 @@
 import { appendFile } from "node:fs/promises"
 import path from "node:path"
-import { createClient as createSupabaseClient } from "@supabase/supabase-js"
+import { insertLlmCall } from "@/lib/db/db"
 import type { ProviderName } from "./types"
 
 export type LLMCallStatus = "ok" | "parse_error" | "api_error"
@@ -33,22 +33,9 @@ export class JsonlWriter implements LLMCallWriter {
   }
 }
 
-export class SupabaseWriter implements LLMCallWriter {
-  private client: ReturnType<typeof createSupabaseClient>
-
-  constructor() {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    if (!url || !key) throw new Error("Supabase not configured for llm_calls logging")
-    this.client = createSupabaseClient(url, key)
-  }
-
+export class SqliteWriter implements LLMCallWriter {
   async write(record: LLMCallRecord): Promise<void> {
-    const builder = this.client.from("llm_calls") as unknown as {
-      insert: (row: Record<string, unknown>) => Promise<{ error: { message: string } | null }>
-    }
-
-    const { error } = await builder.insert({
+    insertLlmCall({
       provider: record.provider,
       model: record.model,
       prompt_version: record.promptVersion,
@@ -57,20 +44,12 @@ export class SupabaseWriter implements LLMCallWriter {
       parse_count: record.parseCount,
       error: record.error,
       prompt: record.prompt,
-      data: record.data === undefined ? null : record.data,
-      meta: record.meta === undefined ? null : record.meta,
+      data: record.data,
+      meta: record.meta,
     })
-    if (error) throw new Error(error.message)
   }
 }
 
 export function getWriter(): LLMCallWriter {
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      return new SupabaseWriter()
-    } catch {
-      // fall through to local file
-    }
-  }
-  return new JsonlWriter()
+  return new SqliteWriter()
 }

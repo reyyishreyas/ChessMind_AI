@@ -37,8 +37,6 @@ import {
   type MoveFeatures,
 } from "@/lib/elo-prediction"
 import { Button } from "@/components/ui/button"
-import { createClient } from "@/lib/supabase/client"
-import type { User } from "@supabase/supabase-js"
 
 export function ChessGame() {
   const [gameState, setGameState] = useState<GameState>(createInitialState())
@@ -61,7 +59,6 @@ export function ChessGame() {
   const [currentDifficulty, setCurrentDifficulty] = useState<DifficultyLevel>(5)
   const [moveTimes, setMoveTimes] = useState<number[]>([])
   const [moveStartTime, setMoveStartTime] = useState<number>(Date.now())
-  const [user, setUser] = useState<User | null>(null)
   const [initialEloSet, setInitialEloSet] = useState(false)
   const [isLoadingSession, setIsLoadingSession] = useState(true)
   const [showGameResult, setShowGameResult] = useState(false)
@@ -77,112 +74,63 @@ export function ChessGame() {
   const gameEndProcessed = useRef(false)
 
   useEffect(() => {
-    const supabase = createClient()
+    const loadSession = async () => {
+      try {
+        const res = await fetch("/api/session")
+        const { session, profile } = await res.json()
 
-    const checkAuth = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      setUser(user)
-
-      if (user) {
-        try {
-          const res = await fetch("/api/session")
-          const { session, profile } = await res.json()
-
-          if (profile) {
-            setPlayerStats({
-              gamesPlayed: profile.games_played,
-              wins: profile.wins,
-              losses: profile.losses,
-              draws: profile.draws,
-              blunders: profile.total_blunders,
-              mistakes: profile.total_mistakes,
-              inaccuracies: profile.total_inaccuracies,
-              goodMoves: profile.total_good_moves,
-              excellentMoves: profile.total_excellent_moves,
-              brilliantMoves: profile.total_brilliant_moves,
-              averageAccuracy: profile.average_accuracy,
-              currentStreak: profile.current_streak,
-              skillRating: profile.skill_rating,
-              tacticsScore: profile.tactics_score ?? 50,
-              positionScore: profile.position_score ?? 50,
-              endgameScore: profile.endgame_score ?? 50,
-              totalCentipawnLoss: 0,
-              totalMovesAnalyzed: 0,
-            })
-            setInitialEloSet(profile.initial_elo_set)
-          }
-
-          if (session) {
-            setGameState(session.game_state)
-            setGameHistory(session.game_history)
-            setMoveNotations(session.move_notations || [])
-            setGameEvaluations(session.game_evaluations || [])
-            setPlayerColor(session.player_color)
-            setCurrentDifficulty(session.current_difficulty)
-            setHistoryIndex(session.history_index)
-            setMoveTimes(session.move_times || [])
-            setGameStarted(true)
-          } else if (!profile?.initial_elo_set) {
-            setShowSetupModal(true)
-          }
-        } catch (e) {
-          console.error("Failed to load session:", e)
-        }
-      } else {
-        const saved = localStorage.getItem("chessAI_playerStats")
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved)
-            setPlayerStats(parsed)
-            setInitialEloSet(parsed.gamesPlayed > 0)
-          } catch {
-            setPlayerStats(null)
-          }
+        if (profile) {
+          setPlayerStats({
+            gamesPlayed: profile.games_played,
+            wins: profile.wins,
+            losses: profile.losses,
+            draws: profile.draws,
+            blunders: profile.total_blunders,
+            mistakes: profile.total_mistakes,
+            inaccuracies: profile.total_inaccuracies,
+            goodMoves: profile.total_good_moves,
+            excellentMoves: profile.total_excellent_moves,
+            brilliantMoves: profile.total_brilliant_moves,
+            averageAccuracy: profile.average_accuracy,
+            currentStreak: profile.current_streak,
+            skillRating: profile.skill_rating,
+            tacticsScore: profile.tactics_score ?? 50,
+            positionScore: profile.position_score ?? 50,
+            endgameScore: profile.endgame_score ?? 50,
+            totalCentipawnLoss: 0,
+            totalMovesAnalyzed: 0,
+          })
+          setInitialEloSet(profile.initial_elo_set)
         }
 
-        const savedSession = localStorage.getItem("chessAI_session")
-        if (savedSession) {
-          try {
-            const session = JSON.parse(savedSession)
-            setGameState(session.gameState)
-            setGameHistory(session.gameHistory)
-            setMoveNotations(session.moveNotations || [])
-            setGameEvaluations(session.gameEvaluations || [])
-            setPlayerColor(session.playerColor)
-            setCurrentDifficulty(session.currentDifficulty)
-            setHistoryIndex(session.historyIndex)
-            setMoveTimes(session.moveTimes || [])
-            if (Array.isArray(session.botEloHistory)) {
-              setBotEloHistory(session.botEloHistory)
-            }
-            setGameStarted(true)
-          } catch {
-            // Ignore
+        if (session) {
+          setGameState(session.game_state)
+          setGameHistory(session.game_history)
+          setMoveNotations(session.move_notations || [])
+          setGameEvaluations(session.game_evaluations || [])
+          setPlayerColor(session.player_color)
+          setCurrentDifficulty(session.current_difficulty)
+          setHistoryIndex(session.history_index)
+          setMoveTimes(session.move_times || [])
+          if (Array.isArray(session.bot_elo_history)) {
+            setBotEloHistory(session.bot_elo_history)
           }
+          if (typeof session.bot_elo === "number") {
+            setBotElo(session.bot_elo)
+          }
+          setGameStarted(true)
+        } else if (!profile?.initial_elo_set) {
+          setShowSetupModal(true)
         }
+      } catch (e) {
+        console.error("Failed to load session:", e)
       }
 
       setIsLoadingSession(false)
     }
 
-    checkAuth()
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_, session) => {
-      setUser(session?.user ?? null)
-    })
-
-    return () => subscription.unsubscribe()
+    loadSession()
   }, [])
-
-  useEffect(() => {
-    if (playerStats && !user) {
-      localStorage.setItem("chessAI_playerStats", JSON.stringify(playerStats))
-    }
-  }, [playerStats, user])
 
   useEffect(() => {
     if (!gameStarted || isLoadingSession) return
@@ -205,15 +153,11 @@ export function ChessGame() {
         botEloHistory,
       }
 
-      if (user) {
-        fetch("/api/session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(sessionData),
-        }).catch(console.error)
-      } else {
-        localStorage.setItem("chessAI_session", JSON.stringify(sessionData))
-      }
+      fetch("/api/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sessionData),
+      }).catch(console.error)
     }, 2000)
 
     return () => {
@@ -231,7 +175,6 @@ export function ChessGame() {
     historyIndex,
     moveTimes,
     gameStarted,
-    user,
     isLoadingSession,
   ])
 
@@ -287,60 +230,56 @@ export function ChessGame() {
     }
     setPlayerStats(newStats)
 
-    if (user) {
-      const scores: number[] = gameEvaluations.map((e) => {
-        switch (e.type) {
-          case "brilliant":
-          case "excellent":
-            return 1.0
-          case "good":
-            return 0.9
-          case "inaccuracy":
-            return 0.5
-          case "mistake":
-            return 0.25
-          case "blunder":
-            return 0.0
-          default:
-            return 0.75
-        }
-      })
-      const ams = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0.75 as number
-      const variance = scores.length > 1 ? scores.reduce((sum, s) => sum + Math.pow(s - ams, 2), 0) / scores.length : 0
-      const stdDev = Math.sqrt(variance)
-      const avgTime = moveTimes.length > 0 ? moveTimes.reduce((a, b) => a + b, 0) / moveTimes.length : 0
-      const patternMoves = replayPatternEvents(gameHistory, gameEvaluations, moveTimes, playerColor)
+    const scores: number[] = gameEvaluations.map((e) => {
+      switch (e.type) {
+        case "brilliant":
+        case "excellent":
+          return 1.0
+        case "good":
+          return 0.9
+        case "inaccuracy":
+          return 0.5
+        case "mistake":
+          return 0.25
+        case "blunder":
+          return 0.0
+        default:
+          return 0.75
+      }
+    })
+    const ams = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0.75 as number
+    const variance = scores.length > 1 ? scores.reduce((sum, s) => sum + Math.pow(s - ams, 2), 0) / scores.length : 0
+    const stdDev = Math.sqrt(variance)
+    const avgTime = moveTimes.length > 0 ? moveTimes.reduce((a, b) => a + b, 0) / moveTimes.length : 0
+    const patternMoves = replayPatternEvents(gameHistory, gameEvaluations, moveTimes, playerColor)
 
-      fetch("/api/save-game", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          result: resultNum,
-          playerColor,
-          aiElo: Math.round(botElo), // Round to integer for database
-          totalMoves: gameEvaluations.length,
-          excellentMoves: gameEvaluations.filter((e) => e.type === "excellent" || e.type === "brilliant").length,
-          goodMoves: gameEvaluations.filter((e) => e.type === "good").length,
-          inaccurateMoves: gameEvaluations.filter((e) => e.type === "inaccuracy").length,
-          mistakes: gameEvaluations.filter((e) => e.type === "mistake").length,
-          blunders: gameEvaluations.filter((e) => e.type === "blunder").length,
-          ams,
-          stdDeviation: stdDev,
-          avgTimePerMove: avgTime,
-          playerEloBefore: Math.round(prevElo),
-          playerEloAfter: newStats.skillRating, // Already rounded above
-          currentBotElo: Math.round(botElo),
-          tacticsScore: newStats.tacticsScore ?? 50,
-          positionScore: newStats.positionScore ?? 50,
-          endgameScore: newStats.endgameScore ?? 50,
-          patternMoves,
-        }),
-      }).catch(console.error)
+    fetch("/api/save-game", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        result: resultNum,
+        playerColor,
+        aiElo: Math.round(botElo), // Round to integer for database
+        totalMoves: gameEvaluations.length,
+        excellentMoves: gameEvaluations.filter((e) => e.type === "excellent" || e.type === "brilliant").length,
+        goodMoves: gameEvaluations.filter((e) => e.type === "good").length,
+        inaccurateMoves: gameEvaluations.filter((e) => e.type === "inaccuracy").length,
+        mistakes: gameEvaluations.filter((e) => e.type === "mistake").length,
+        blunders: gameEvaluations.filter((e) => e.type === "blunder").length,
+        ams,
+        stdDeviation: stdDev,
+        avgTimePerMove: avgTime,
+        playerEloBefore: Math.round(prevElo),
+        playerEloAfter: newStats.skillRating, // Already rounded above
+        currentBotElo: Math.round(botElo),
+        tacticsScore: newStats.tacticsScore ?? 50,
+        positionScore: newStats.positionScore ?? 50,
+        endgameScore: newStats.endgameScore ?? 50,
+        patternMoves,
+      }),
+    }).catch(console.error)
 
-      fetch("/api/session", { method: "DELETE" }).catch(console.error)
-    } else {
-      localStorage.removeItem("chessAI_session")
-    }
+    fetch("/api/session", { method: "DELETE" }).catch(console.error)
   }, [gameState.isCheckmate, gameState.isStalemate, gameState.isDraw])
 
   // AI move effect
@@ -676,19 +615,16 @@ export function ChessGame() {
     aiMoveInProgress.current = false
     setGameStarted(true)
 
-    if (user) {
-      const supabase = createClient()
-      supabase
-        .from("player_profiles")
-        .update({
-          initial_elo_set: true,
-          preferred_color: color,
-          skill_rating: initialElo,
-          current_bot_elo: Math.round(startElo),
-        })
-        .eq("id", user.id)
-        .then(() => {})
-    }
+    fetch("/api/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        initial_elo_set: true,
+        preferred_color: color,
+        skill_rating: initialElo,
+        current_bot_elo: Math.round(startElo),
+      }),
+    }).catch(console.error)
   }
 
   const handleUndo = () => {
@@ -843,30 +779,6 @@ export function ChessGame() {
           ) : (
             <Button size="sm" onClick={() => setShowSetupModal(true)} className="h-7 px-3 text-xs">
               Start Game
-            </Button>
-          )}
-
-          {user ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 px-2 text-xs"
-              onClick={async () => {
-                const supabase = createClient()
-                await supabase.auth.signOut()
-                window.location.reload()
-              }}
-            >
-              Logout
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 px-2 text-xs"
-              onClick={() => (window.location.href = "/auth/login")}
-            >
-              Login
             </Button>
           )}
         </div>

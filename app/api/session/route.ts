@@ -1,40 +1,23 @@
-import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import {
+  getProfile,
+  getActiveSession,
+  upsertSession,
+  deactivateSession,
+  type SessionRow,
+} from "@/lib/db/db"
 
-// GET - Load active session
+export const dynamic = "force-dynamic"
+
+// GET - Load active session + local profile
 export async function GET() {
-  const supabase = await createClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ session: null })
-  }
-
-  const { data: session } = await supabase
-    .from("game_sessions")
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("is_active", true)
-    .single()
-
-  const { data: profile } = await supabase.from("player_profiles").select("*").eq("id", user.id).single()
-
-  return NextResponse.json({ session, profile })
+  const profile = getProfile()
+  const session = getActiveSession()
+  return NextResponse.json({ session: session ? parseSession(session) : null, profile })
 }
 
-// POST - Save session
+// POST - Save session (debounced autosave)
 export async function POST(req: Request) {
-  const supabase = await createClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-
   const body = await req.json()
   const {
     gameState,
@@ -45,46 +28,23 @@ export async function POST(req: Request) {
     currentDifficulty,
     historyIndex,
     moveTimes,
+    botElo,
+    botEloHistory,
   } = body
 
   try {
-    // Upsert session
-    const { data: existing } = await supabase
-      .from("game_sessions")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("is_active", true)
-      .single()
-
-    if (existing) {
-      await supabase
-        .from("game_sessions")
-        .update({
-          game_state: gameState,
-          game_history: gameHistory,
-          move_notations: moveNotations,
-          game_evaluations: gameEvaluations,
-          player_color: playerColor,
-          current_difficulty: currentDifficulty,
-          history_index: historyIndex,
-          move_times: moveTimes,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existing.id)
-    } else {
-      await supabase.from("game_sessions").insert({
-        user_id: user.id,
-        game_state: gameState,
-        game_history: gameHistory,
-        move_notations: moveNotations,
-        game_evaluations: gameEvaluations,
-        player_color: playerColor,
-        current_difficulty: currentDifficulty,
-        history_index: historyIndex,
-        move_times: moveTimes,
-      })
-    }
-
+    upsertSession({
+      game_state: gameState,
+      game_history: gameHistory,
+      move_notations: moveNotations,
+      game_evaluations: gameEvaluations,
+      player_color: playerColor,
+      current_difficulty: currentDifficulty,
+      history_index: historyIndex,
+      move_times: moveTimes,
+      bot_elo: botElo,
+      bot_elo_history: botEloHistory,
+    })
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Save session error:", error)
@@ -92,18 +52,34 @@ export async function POST(req: Request) {
   }
 }
 
-// DELETE - Clear session
+// DELETE - Retire the active session
 export async function DELETE() {
-  const supabase = await createClient()
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  try {
+    deactivateSession()
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Delete session error:", error)
+    return NextResponse.json({ error: "Failed to clear session" }, { status: 500 })
   }
+}
 
-  await supabase.from("game_sessions").update({ is_active: false }).eq("user_id", user.id).eq("is_active", true)
+// JSON columns are stored as text in SQLite; hand the client real values.
+function parseSession(row: SessionRow) {
+  return {
+    ...row,
+    game_state: safeParse(row.game_state, null),
+    game_history: safeParse(row.game_history, []),
+    move_notations: safeParse(row.move_notations, []),
+    game_evaluations: safeParse(row.game_evaluations, []),
+    move_times: safeParse(row.move_times, []),
+    bot_elo_history: safeParse(row.bot_elo_history, []),
+  }
+}
 
-  return NextResponse.json({ success: true })
+function safeParse<T>(value: string, fallback: T): T {
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    return fallback
+  }
 }
