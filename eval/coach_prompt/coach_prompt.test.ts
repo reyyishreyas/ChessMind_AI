@@ -75,6 +75,7 @@ function buildInput(overrides: Partial<Parameters<typeof buildCoachPrompt>[0]> =
     bestSan: "N/A",
     bestMoveReason: "",
     threatFact: "",
+    priorSuggestion: "",
     ...overrides,
   }
 }
@@ -91,6 +92,18 @@ test("prompt always carries every verified-fact bullet", () => {
   assert.match(prompt, /- Player ELO rating: ~1200/)
   assert.match(prompt, /- Pattern snapshot this session: too few moves yet to judge patterns/)
   assert.match(prompt, /- Pattern history across finished games: no finished games recorded yet/)
+  assert.match(prompt, /- Coach's prior suggestion for this position \(from the suggester model\): none/)
+})
+
+test("feedback prompt quotes the suggester's move and stays consistent", () => {
+  const prompt = buildCoachPrompt(
+    buildInput({ priorSuggestion: "Play Nf3: it develops your knight toward the center." })
+  )
+  assert.match(
+    prompt,
+    /- Coach's prior suggestion for this position \(from the suggester model\): Play Nf3: it develops your knight toward the center\./
+  )
+  assert.match(prompt, /Never contradict the suggestion\./)
 })
 
 test("cross-game facts are quoted only when provided", () => {

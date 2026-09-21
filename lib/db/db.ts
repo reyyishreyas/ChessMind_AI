@@ -119,6 +119,20 @@ create table if not exists llm_calls (
   created_at text not null default (datetime('now'))
 );
 
+-- Shared "coach bus": the suggester model writes its chosen move here and the
+-- feedback model reads it (and vice versa), so both roles see what the other
+-- is thinking for the same position. Singleton row (id = 'local').
+create table if not exists coach_context (
+  id text primary key,
+  fen text,
+  suggestion text,
+  feedback text,
+  suggester_model text,
+  feedback_model text,
+  move_no integer not null default 0,
+  updated_at text not null default (datetime('now'))
+);
+
 create index if not exists idx_game_stats_user on game_stats(user_id);
 create index if not exists idx_game_sessions_user_active on game_sessions(user_id, is_active);
 create index if not exists idx_game_moves_user_game on game_moves(user_id, game_id);
@@ -484,8 +498,116 @@ export function getGameHistory(limit = 20): GameHistoryRow[] {
 export function resetLocalData(): void {
   const db = getDb()
   db.exec(
-    `delete from game_moves; delete from game_stats; delete from game_sessions; delete from player_profiles; delete from llm_calls;`
+    `delete from game_moves; delete from game_stats; delete from game_sessions; delete from player_profiles; delete from llm_calls; delete from coach_context;`
   )
+}
+
+/**
+ * One move the suggester model chose for a position. Serializable so the
+ * feedback model can read the exact same suggestion the player saw.
+ */
+export type CoachSuggestion = {
+  from: string
+  to: string
+  san: string
+  explanation: string
+  grade: string
+  cpLoss: number
+  model: string
+  fen: string
+}
+
+export type CoachContextRow = {
+  fen: string
+  suggestion: CoachSuggestion | null
+  feedback: string | null
+  suggester_model: string | null
+  feedback_model: string | null
+  move_no: number
+  updated_at: string
+}
+
+const EMPTY_COACH_CONTEXT: CoachContextRow = {
+  fen: "",
+  suggestion: null,
+  feedback: null,
+  suggester_model: null,
+  feedback_model: null,
+  move_no: 0,
+  updated_at: "",
+}
+
+export function getCoachContext(): CoachContextRow {
+  const db = getDb()
+  const row = db.prepare("select * from coach_context where id = 'local'").get() as
+    | {
+        fen: string | null
+        suggestion: string | null
+        feedback: string | null
+        suggester_model: string | null
+        feedback_model: string | null
+        move_no: number
+        updated_at: string
+      }
+    | undefined
+  if (!row) return { ...EMPTY_COACH_CONTEXT }
+  let suggestion: CoachSuggestion | null = null
+  if (row.suggestion) {
+    try {
+      suggestion = JSON.parse(row.suggestion) as CoachSuggestion
+    } catch {
+      suggestion = null
+    }
+  }
+  return {
+    fen: row.fen ?? "",
+    suggestion,
+    feedback: row.feedback ?? null,
+    suggester_model: row.suggester_model ?? null,
+    feedback_model: row.feedback_model ?? null,
+    move_no: row.move_no ?? 0,
+    updated_at: row.updated_at ?? "",
+  }
+}
+
+function ensureCoachRow(): void {
+  getDb()
+    .prepare("insert into coach_context (id) values ('local') on conflict(id) do nothing")
+    .run()
+}
+
+/** Record what the suggester model chose (clears any feedback for an older position). */
+export function setCoachSuggestion(suggestion: CoachSuggestion): void {
+  const db = getDb()
+  ensureCoachRow()
+  db.prepare(
+    `update coach_context
+     set fen = @fen, suggestion = @suggestion, suggester_model = @model,
+         move_no = move_no + 1, updated_at = datetime('now')
+     where id = 'local'`
+  ).run({ fen: suggestion.fen, suggestion: JSON.stringify(suggestion), model: suggestion.model })
+}
+
+/** Record what the feedback model said, so the suggester can read it next turn. */
+export function setCoachFeedback(fen: string, feedback: string, model: string): void {
+  const db = getDb()
+  ensureCoachRow()
+  db.prepare(
+    `update coach_context
+     set fen = @fen, feedback = @feedback, feedback_model = @model, updated_at = datetime('now')
+     where id = 'local'`
+  ).run({ fen, feedback, model })
+}
+
+/** Reset the shared coach bus (new game). */
+export function clearCoachContext(): void {
+  getDb().prepare("delete from coach_context where id = 'local'").run()
+}
+
+/** The suggester's move for `fen` if it still refers to the same position. */
+export function getSuggestionForFen(fen: string): CoachSuggestion | null {
+  const ctx = getCoachContext()
+  return ctx.suggestion && ctx.suggestion.fen === fen ? ctx.suggestion : null
 }
 
 function clamp100(n: unknown): number {

@@ -1,4 +1,4 @@
-import { generateJSON } from "@/lib/llm"
+import { generateJSON, getProvider, resolveCoachModel } from "@/lib/llm"
 import { cleanCoachAnalysis, normalizeMoveQuality } from "@/lib/coach-verdict"
 import { type GameState, gameStateToFEN } from "@/lib/chess-engine"
 import { type MotifDetail, type MotifId, detectMotifDetails, detectMotifs } from "@/lib/tactics"
@@ -13,7 +13,8 @@ import {
 } from "@/lib/pattern-profile"
 import { buildCoachPrompt, describeMotifs, sanFor } from "@/lib/coach-prompt"
 import { buildMoveExplanation, describeThreatsAfterMove, oppositeColor } from "@/lib/coach-explain"
-import { getPlayerMoveHistory } from "@/lib/db/db"
+import { formatPriorSuggestion } from "@/lib/coach-suggest"
+import { getPlayerMoveHistory, getSuggestionForFen, setCoachFeedback } from "@/lib/db/db"
 
 export const maxDuration = 30
 
@@ -74,6 +75,7 @@ export async function POST(req: Request) {
 
   const playerColor = stateBefore?.turn ?? oppositeColor(gameState.turn)
   const threatFact = describeThreatsAfterMove(gameState, playerColor)
+  const priorSuggestion = formatPriorSuggestion(getSuggestionForFen(fenBefore))
   const bestMoveReason =
     evaluation.bestMove && stateBefore
       ? buildMoveExplanation(stateBefore, evaluation.bestMove.from, evaluation.bestMove.to)
@@ -92,11 +94,15 @@ export async function POST(req: Request) {
     bestSan,
     bestMoveReason,
     threatFact,
+    priorSuggestion,
   })
+
+  const model = resolveCoachModel(getProvider(), "feedback")
 
   try {
     const { data } = await generateJSON<CoachVerdict>({
       prompt,
+      model,
       promptVersion: "analyze-move-v3",
       meta: { fen, fenBefore },
       temperature: 0.4,
@@ -114,8 +120,11 @@ export async function POST(req: Request) {
       return Response.json({ error: "Model returned incomplete data", success: false }, { status: 502 })
     }
 
+    const analysis = cleanCoachAnalysis(String(data.analysis))
+    setCoachFeedback(fenBefore, analysis, model)
+
     return Response.json({
-      analysis: cleanCoachAnalysis(String(data.analysis)),
+      analysis,
       move_quality: normalizeMoveQuality(String(data.move_quality)),
       accuracy_score: Math.max(0, Math.min(100, Number(data.accuracy_score))),
       blunder_risk: String(data.blunder_risk),

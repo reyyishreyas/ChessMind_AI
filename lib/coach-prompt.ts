@@ -29,6 +29,7 @@ export type CoachPromptInput = {
   bestSan: string
   bestMoveReason: string
   threatFact: string
+  priorSuggestion: string
 }
 
 export function buildCoachPrompt(input: CoachPromptInput): string {
@@ -45,6 +46,7 @@ export function buildCoachPrompt(input: CoachPromptInput): string {
     bestSan,
     bestMoveReason,
     threatFact,
+    priorSuggestion,
   } = input
 
   const fenBefore = gameStateToFEN(stateBefore)
@@ -69,6 +71,7 @@ VERIFIED FACTS (all correct; never contradict or go beyond them):
 - Better move was: ${bestSan}
 - Why the better move is better: ${bestMoveReason || "not available"}
 - Immediate threat after your move: ${threatFact || "none"}
+- Coach's prior suggestion for this position (from the suggester model): ${priorSuggestion || "none"}
 - Verified tactical motifs in this move: ${motifFacts || "none"}
 - Recent moves: ${moveHistory.slice(-10).join(", ") || "Game just started"}
 - Player ELO rating: ~${skillRating ?? 1000}
@@ -84,6 +87,7 @@ WARNING RULES:
 6. The pattern snapshot and pattern-history lines are verified; you may teach against them, but never add pattern claims beyond them.
 7. Only mention a threat that is in the "Immediate threat" line above.
 8. Do not invent your own positional judgments (space, structure, development, sacrifices). Describe the played move using only: the grade, the centipawn loss, the better-move reason, and the threat.
+9. If a prior coach suggestion is given and the player played it, confirm it was the right choice. If the player did not play it, compare the played move to it. Never contradict the suggestion.
 
 VARIETY RULES:
 1. Do not reuse a fixed template. Every move must get a fresh explanation.

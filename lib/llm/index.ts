@@ -17,6 +17,22 @@ export function resolveModel(provider: LLMProvider): string {
   return MODEL_OVERRIDE ?? DEFAULT_MODELS[provider.name]
 }
 
+// Two roles for the coach: one model critiques the player's move (feedback),
+// another picks and explains the move to play (suggester). They share the
+// coach_context row so each sees what the other said.
+const COACH_MODELS: Record<ProviderName, { feedback: string; suggester: string }> = {
+  ollama: { feedback: "gemma2:2b", suggester: "qwen2.5:3b" },
+  gemini: { feedback: "gemini-2.5-flash", suggester: "gemini-2.5-flash" },
+  groq: { feedback: "llama-3.3-70b-versatile", suggester: "llama-3.3-70b-versatile" },
+}
+
+export type CoachRole = "feedback" | "suggester"
+
+export function resolveCoachModel(provider: LLMProvider, role: CoachRole): string {
+  if (MODEL_OVERRIDE) return MODEL_OVERRIDE
+  return COACH_MODELS[provider.name][role]
+}
+
 export function getProvider(name?: string): LLMProvider {
   const providerName = (name ?? process.env.LLM_PROVIDER ?? "ollama") as ProviderName
 

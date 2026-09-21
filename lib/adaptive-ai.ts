@@ -453,25 +453,24 @@ export function getAIMove(
   return scoredMoves[0]?.move || moves[0]
 }
 
-export function evaluatePlayerMove(stateBefore: GameState, from: Square, to: Square): MoveEvaluation {
-  const moves = getAllLegalMoves(stateBefore)
-
+/** Score every legal move with the same minimax used for grading, best first. */
+function scoreAllLegalMoves(state: GameState): { from: Square; to: Square; score: number }[] {
+  const moves = getAllLegalMoves(state)
   const maxNodes = 6000
   const nodeCount = { count: 0 }
-
   const scoredMoves: { from: Square; to: Square; score: number }[] = []
 
   for (const move of moves) {
     if (nodeCount.count > maxNodes) break
 
-    const newState = makeMove(stateBefore, move.from, move.to)
+    const newState = makeMove(state, move.from, move.to)
     if (newState) {
       const score = minimax(
         newState,
         3,
         Number.NEGATIVE_INFINITY,
         Number.POSITIVE_INFINITY,
-        stateBefore.turn === "b",
+        state.turn === "b",
         0,
         nodeCount,
         maxNodes,
@@ -480,8 +479,33 @@ export function evaluatePlayerMove(stateBefore: GameState, from: Square, to: Squ
     }
   }
 
-  scoredMoves.sort((a, b) => (stateBefore.turn === "w" ? b.score - a.score : a.score - b.score))
+  scoredMoves.sort((a, b) => (state.turn === "w" ? b.score - a.score : a.score - b.score))
+  return scoredMoves
+}
 
+export type RankedMove = { from: Square; to: Square; score: number; centipawnLoss: number }
+
+/**
+ * The top `limit` moves for the side to move, ranked by the very same minimax
+ * that grades the player (`evaluatePlayerMove`). Because suggestions come from
+ * this list, a coach suggestion can never be re-graded as inaccurate for a
+ * disagreement between engines — they are one engine.
+ */
+export function rankMoves(state: GameState, limit = 5): RankedMove[] {
+  const scored = scoreAllLegalMoves(state)
+  if (scored.length === 0) return []
+  const best = scored[0].score
+  const white = state.turn === "w"
+  return scored.slice(0, Math.max(1, limit)).map((m) => ({
+    from: m.from,
+    to: m.to,
+    score: m.score,
+    centipawnLoss: Math.max(0, white ? best - m.score : m.score - best),
+  }))
+}
+
+export function evaluatePlayerMove(stateBefore: GameState, from: Square, to: Square): MoveEvaluation {
+  const scoredMoves = scoreAllLegalMoves(stateBefore)
   const bestMove = scoredMoves[0]
   const playerMove = scoredMoves.find((m) => m.from === from && m.to === to)
 

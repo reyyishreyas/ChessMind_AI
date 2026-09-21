@@ -1,4 +1,4 @@
-import { generateJSON, getProvider, resolveModel } from "@/lib/llm"
+import { generateJSON, getProvider, resolveCoachModel, resolveModel } from "@/lib/llm"
 import type { ProviderName } from "@/lib/llm/types"
 import { buildDeterministicVerdict, cleanAnalysis, cleanCoachAnalysis } from "@/lib/coach-verdict"
 import { buildCoachPrompt, buildCoachSentencePrompt, sanFor, type CoachPromptInput } from "@/lib/coach-prompt"
@@ -14,7 +14,8 @@ import {
   summarizePatterns,
   type PatternMoveEvent,
 } from "@/lib/pattern-profile"
-import { getPlayerMoveHistory } from "@/lib/db/db"
+import { getPlayerMoveHistory, getSuggestionForFen, setCoachFeedback } from "@/lib/db/db"
+import { formatPriorSuggestion } from "@/lib/coach-suggest"
 import { getWriter } from "@/lib/llm/logger"
 
 export const maxDuration = 60
@@ -72,6 +73,7 @@ export async function POST(req: Request) {
 
   const playerColor = stateBefore?.turn ?? oppositeColor(gameState.turn)
   const threatFact = describeThreatsAfterMove(gameState, playerColor)
+  const priorSuggestion = formatPriorSuggestion(getSuggestionForFen(fenBefore))
   const bestMoveReason =
     evaluation.bestMove && stateBefore
       ? buildMoveExplanation(stateBefore, evaluation.bestMove.from, evaluation.bestMove.to)
@@ -101,6 +103,7 @@ export async function POST(req: Request) {
       bestSan,
       bestMoveReason,
       threatFact,
+      priorSuggestion,
     }
   }
 
@@ -117,7 +120,7 @@ export async function POST(req: Request) {
 
       let analysis = ""
       let providerName: ProviderName = "ollama"
-      let model = resolveModel(getProvider())
+      let model = resolveCoachModel(getProvider(), "feedback")
 
       try {
         // Heavier grounded facts (saved-game history) compute after preview.
@@ -139,6 +142,7 @@ export async function POST(req: Request) {
             attempts: 1,
           })
           analysis = cleanCoachAnalysis(String(data.analysis ?? ""))
+          setCoachFeedback(fenBefore, analysis, model)
           emit("token", analysis)
           emit("done", { analysis, success: true, verdict })
           controller.close()
@@ -210,6 +214,7 @@ export async function POST(req: Request) {
 
         clearTimeout(timeout)
         analysis = cleanCoachAnalysis(analysis)
+        setCoachFeedback(fenBefore, analysis, model)
 
         await getWriter().write({
           ts: new Date().toISOString(),
