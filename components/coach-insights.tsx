@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { TrendingUp, Bot, Trophy, XCircle, Minus, Inbox } from "lucide-react"
+import { TrendingUp, Bot, Trophy, XCircle, Minus, Inbox, Trash2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { recurringFindingText, type CrossGameSummary } from "@/lib/pattern-profile"
 import type { GameHistoryRow } from "@/lib/db/db"
 
@@ -53,12 +54,24 @@ function formatDate(iso: string): string {
 export function CoachInsights({ open, onClose }: CoachInsightsProps) {
   const [data, setData] = useState<PatternsPayload | null>(null)
   const [loading, setLoading] = useState(true)
+  const [confirmingReset, setConfirmingReset] = useState(false)
+
+  const handleReset = async () => {
+    try {
+      await fetch("/api/profile", { method: "DELETE" })
+      window.location.reload()
+    } catch (error) {
+      console.error("Reset failed:", error)
+      setConfirmingReset(false)
+    }
+  }
 
   useEffect(() => {
     if (!open) return
     let cancelled = false
     setLoading(true)
     setData(null)
+    setConfirmingReset(false)
     fetch("/api/patterns")
       .then((res) => res.json())
       .then((payload: PatternsPayload) => {
@@ -170,6 +183,30 @@ export function CoachInsights({ open, onClose }: CoachInsightsProps) {
             )}
           </div>
         )}
+
+        <div className="pt-3 mt-1 border-t border-border flex justify-end">
+          {confirmingReset ? (
+            <div className="flex gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setConfirmingReset(false)}>
+                Cancel
+              </Button>
+              <Button size="sm" variant="destructive" onClick={handleReset}>
+                <Trash2 className="w-4 h-4 mr-1" />
+                Confirm erase
+              </Button>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground hover:text-red-500"
+              onClick={() => setConfirmingReset(true)}
+            >
+              <Trash2 className="w-4 h-4 mr-1" />
+              Reset all progress
+            </Button>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   )

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getProfile, updateProfile, type ProfileRow } from "@/lib/db/db"
+import { getProfile, resetLocalData, updateProfile, type ProfileRow } from "@/lib/db/db"
 
 export const dynamic = "force-dynamic"
 
@@ -7,6 +7,19 @@ export const dynamic = "force-dynamic"
 export async function GET() {
   const profile = getProfile()
   return NextResponse.json({ profile })
+}
+
+// DELETE - wipe all local progress (finished games, sessions, profile, logs).
+// The offline single-persona app has no account system, so this is how a
+// player starts fresh.
+export async function DELETE() {
+  try {
+    resetLocalData()
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Reset local data error:", error)
+    return NextResponse.json({ error: "Failed to reset local data" }, { status: 500 })
+  }
 }
 
 // PATCH - Persist profile setup (first-game start: initial ELO + preferred color)
