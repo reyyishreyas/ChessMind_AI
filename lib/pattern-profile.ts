@@ -384,7 +384,7 @@ function diffPlayerMove(prev: GameState, next: GameState, color: PieceColor): Pl
   if (!movedFrom) return null
   const from = movedFrom
   const to = findDestination(prev, next, color) ?? from
-  const piece = getPieceAt(next, to)?.type ?? getPieceAt(prev, from)?.type
+  const piece = getPieceAt(prev, from)?.type ?? getPieceAt(next, to)?.type
   if (!piece) return null
   const captured = getPieceAt(prev, to)
   const isCapture = Boolean(captured) || (piece === "p" && prev.enPassant === to)

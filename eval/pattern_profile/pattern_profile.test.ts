@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { createInitialState, makeMove, type GameState, type Square } from "../../lib/chess-engine.ts"
+import { createInitialState, makeMove, type GameState, type Piece, type Square } from "../../lib/chess-engine.ts"
 import {
   buildPatternProfile,
   describePattern,
@@ -233,6 +233,52 @@ function playHistory(moves: [string, string][]): GameState[] {
   }
   return history
 }
+
+function fenToState(fen: string): GameState {
+  const [placement, turn, castling, enPassant, halfMoves, fullMoves] = fen.split(" ")
+  const board: Piece[][] = []
+  for (const rank of placement.split("/")) {
+    const row: Piece[] = []
+    for (const ch of rank) {
+      if (ch >= "1" && ch <= "8") {
+        for (let i = 0; i < Number.parseInt(ch); i++) row.push(null)
+      } else {
+        const color = ch === ch.toUpperCase() ? "w" : "b"
+        const type = ch.toLowerCase() as "p" | "n" | "b" | "r" | "q" | "k"
+        row.push({ type, color })
+      }
+    }
+    board.push(row)
+  }
+  return {
+    board,
+    turn: turn === "w" ? "w" : "b",
+    castling: {
+      w: { k: castling.includes("K"), q: castling.includes("Q") },
+      b: { k: castling.includes("k"), q: castling.includes("q") },
+    },
+    enPassant: enPassant === "-" ? null : enPassant,
+    halfMoves: Number.parseInt(halfMoves),
+    fullMoves: Number.parseInt(fullMoves),
+    history: [],
+    isCheck: false,
+    isCheckmate: false,
+    isStalemate: false,
+    isDraw: false,
+  }
+}
+
+test("replay reports the moving pawn on a promotion, not the new queen", () => {
+  // White promotes d7-d8=Q, delivering check: the profile must still say pawn.
+  const before = fenToState("4k3/3P4/8/8/8/8/8/4K3 w - - 0 1")
+  const after = fenToState("3Qk3/8/8/8/8/8/8/4K3 b - - 0 1")
+  const events = replayPatternEvents([before, after], [evalOf("excellent", -50)], [3], "w")
+  assert.equal(events.length, 1)
+  assert.equal(events[0].piece, "p")
+  assert.deepEqual(events[0].squareFrom, "d7")
+  assert.deepEqual(events[0].squareTo, "d8")
+  assert.equal(events[0].isCheck, true)
+})
 
 test("replay extracts player moves with piece and capture flags", () => {
   // 1. e4 d5 2. exd5 — white captures the d5 pawn

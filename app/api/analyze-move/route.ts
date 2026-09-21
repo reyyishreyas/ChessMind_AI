@@ -1,15 +1,9 @@
 import { generateJSON } from "@/lib/llm"
-import {
-  type GameState,
-  type Move,
-  getPieceAt,
-  isKingInCheck,
-  moveToAlgebraic,
-  gameStateToFEN,
-} from "@/lib/chess-engine"
+import { type GameState, gameStateToFEN } from "@/lib/chess-engine"
 import { type MotifDetail, type MotifId, detectMotifDetails, detectMotifs } from "@/lib/tactics"
 import type { MoveEvaluation } from "@/lib/adaptive-ai"
 import { buildPatternProfile, describePattern, type PatternMoveEvent } from "@/lib/pattern-profile"
+import { buildCoachPrompt, describeMotifs, sanFor } from "@/lib/coach-prompt"
 
 export const maxDuration = 30
 
@@ -65,40 +59,18 @@ export async function POST(req: Request) {
 
   const patternProfile = buildPatternProfile(patternMoves ?? [])
   const patternFacts = patternProfile.nMoves >= 4 ? describePattern(patternProfile) : ""
-  const patternLine =
-    patternFacts !== ""
-      ? `- Pattern snapshot this session (ground truth from measured moves): ${patternFacts}`
-      : "- Pattern snapshot this session: too few moves yet to judge patterns"
 
-  const prompt = `You are a chess coach analyzing a player's move. Ground every claim in the verified facts below.
-
-VERIFIED FACTS (all correct; never contradict or go beyond them):
-- Player played: ${playerSan} (from ${evaluation.from} to ${evaluation.to})
-- Move grade: ${evaluation.type}; centipawn loss: ${evaluation.centipawnLoss || 0} cp
-- Position before player move (FEN): ${fenBefore}
-- Position after player move (FEN): ${fen}
-- Better move was: ${bestSan}
-- Verified tactical motifs in this move: ${motifFacts || "none"}
-- Recent moves: ${moveHistory.slice(-10).join(", ") || "Game just started"}
-- Player ELO rating: ~${playerStats?.skillRating || 1000}
-${patternLine}
-
-WRITING RULES:
-1. When you name the player's move, use exactly "${playerSan}".
-2. Never claim a tactic (fork, pin, skewer, discovered attack, etc.) unless it is in the verified list above.
-3. Alternatives must reference the provided better move "${bestSan}".
-4. Only mention squares and pieces that exist in the position.
-5. Do not fabricate move counts, game phases, or openings.
-6. The pattern snapshot line is verified; you may teach against it, but never add pattern claims beyond it.
-
-Return ONLY valid JSON:
-{
-  "analysis": "Conversational, encouraging, educational 2-3 sentence message. Name the player's move and explain only using the verified facts.",
-  "move_quality": "Brilliant" | "Good" | "Mistake" | "Blunder" | "Perfect" | "Inaccuracy",
-  "accuracy_score": <number between 0 and 100>,
-  "blunder_risk": "low" | "medium" | "high"
-}
-Return only the JSON object, no other text.`
+  const prompt = buildCoachPrompt({
+    stateBefore: stateBefore ?? gameState,
+    stateAfter: gameState,
+    evaluation,
+    moveHistory,
+    skillRating: playerStats?.skillRating ?? null,
+    patternFacts,
+    motifDetails,
+    playerSan,
+    bestSan,
+  })
 
   try {
     const { data } = await generateJSON<CoachVerdict>({
@@ -131,44 +103,6 @@ Return only the JSON object, no other text.`
   } catch (error) {
     return Response.json({ error: "Model request failed", success: false }, { status: 502 })
   }
-}
-
-function describeMotifs(details: MotifDetail[]): string {
-  return details
-    .map((d) => {
-      if (d.subjects && d.subjects.length) {
-        const names = d.subjects.map((s) => `${PIECE_NAMES[s.type]} on ${s.square}`).join(" and ")
-        return `${d.id} (${names})`
-      }
-      if (d.subject) {
-        return `${d.id} (${PIECE_NAMES[d.subject.type]} on ${d.subject.square})`
-      }
-      return d.id
-    })
-    .join(", ")
-}
-
-const PIECE_NAMES: Record<string, string> = {
-  p: "pawn",
-  n: "knight",
-  b: "bishop",
-  r: "rook",
-  q: "queen",
-  k: "king",
-}
-
-function sanFor(stateBefore: GameState, stateAfter: GameState, from: string, to: string): string {
-  const piece = getPieceAt(stateBefore, from)
-  if (!piece) return `${from}-${to}`
-  const move: Move = {
-    from,
-    to,
-    piece: piece.type,
-    captured: getPieceAt(stateBefore, to)?.type,
-    check: isKingInCheck(stateAfter, piece.color === "w" ? "b" : "w"),
-    checkmate: stateAfter.isCheckmate,
-  }
-  return moveToAlgebraic(stateBefore, move)
 }
 
 function normalizeMoveQuality(quality: string): string {

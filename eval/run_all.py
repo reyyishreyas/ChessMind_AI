@@ -60,6 +60,14 @@ if __name__ == "__main__":
 
     statuses["elo_model"] = run_suite("elo_model", ["-m", "eval.elo_model.run"]) if (ROOT / "elo_model" / "run.py").exists() else False
     statuses["grounding"] = run_suite("grounding", ["-m", "eval.grounding.run"]) if (ROOT / "grounding" / "run.py").exists() else False
+    statuses["tactics"] = run_shell(
+        "tactics",
+        ["node", "--test", str(ROOT / "tactics" / "tactics.test.ts")],
+    ) if (ROOT / "tactics" / "tactics.test.ts").exists() else False
+    statuses["coach_prompt"] = run_shell(
+        "coach_prompt",
+        ["node", "--test", str(ROOT / "coach_prompt" / "coach_prompt.test.ts")],
+    ) if (ROOT / "coach_prompt" / "coach_prompt.test.ts").exists() else False
     statuses["pattern_profile"] = run_shell(
         "pattern_profile",
         ["node", "--test", str(ROOT / "pattern_profile" / "pattern_profile.test.ts")],
