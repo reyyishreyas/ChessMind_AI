@@ -1,6 +1,6 @@
 # ChessMind_AI
 
-An adaptive AI-powered chess engine that adjusts its playing strength in real time based on how the user is performing by combining Stockfish analysis, Gemini LLM reasoning, and machine learning.
+An adaptive AI-powered chess trainer that adjusts its playing strength in real time based on how you're performing, and coaches you through every move. Combines Stockfish analysis, a local LLM, machine learning, and a deterministic player-pattern profiler — all fully offline after setup.
 
 ---
 
@@ -8,25 +8,16 @@ An adaptive AI-powered chess engine that adjusts its playing strength in real ti
 
 Most chess engines play at a fixed strength. That usually leads to a poor experience — either the engine is too strong and punishing, or too weak and unchallenging.
 
-In this project, the idea is to keep the game competitive at all times. The system evaluates each move and updates the bot’s ELO dynamically so that the difficulty stays aligned with the player’s level.
+In this project, the idea is to keep the game competitive at all times. The system evaluates each move, measures your play against a deterministic pattern profiler, and updates the bot's ELO so the difficulty stays aligned with your level while a grounded coach explains what happened and why.
 
-Unlike traditional adaptive engines, ChessMind AI follows a hybrid AI pipeline where Stockfish provides objective engine evaluations, which are combined with prompt-engineered Gemini API analysis to generate qualitative insights. These AI-generated features are then processed by a trained machine learning model to predict player ELO, enabling the engine to continuously adapt its playing strength.
+- If you're performing well, the bot gradually becomes stronger
+- If you're struggling, the bot eases difficulty within limits
+- ELO is updated based on actual performance (and your patterns, not just ACPL)
+- Every move is analyzed with Stockfish evaluations and LLM feedback
+- Every move you make is persisted locally, so the coach learns your recurring patterns across games
+- **Fully offline**: progress, games, and coaching context live in a local SQLite database — no accounts, no auth server, no Supabase, no Postgres
 
-* If the player is performing well, the bot gradually becomes stronger
-* If the player is struggling, the bot eases difficulty within limits
-* Player ELO is updated based on actual performance
-* Each move is analyzed using Stockfish engine evaluations and Gemini AI feedback
-* AI-generated insights are used as features for machine learning-based ELO prediction
-
-The goal is to create a more realistic, intelligent, and useful training environment.
-
----
-
-## Demo
-
-Video walkthrough:
-
-https://drive.google.com/file/d/1xFnCvqkNif8Q96LK8WOTo7sPBoKdd6bx/view?usp=sharing
+The goal is a realistic, intelligent, self-contained training environment.
 
 ---
 
@@ -37,65 +28,35 @@ https://drive.google.com/file/d/1xFnCvqkNif8Q96LK8WOTo7sPBoKdd6bx/view?usp=shari
 * Predicts player strength after every move
 * Updates bot ELO incrementally within thresholds
 * Avoids sudden jumps in difficulty
-* Updates player ELO after the game ends
+* Updates player ELO after the game ends using the standard Elo formula
 
-### Real-Time AI Move Analysis
+### Grounded Real-Time Coaching
 
-* Uses Stockfish for objective chess engine evaluation
-* Integrates the Gemini API (LLM) for qualitative move reasoning
-* Uses prompt engineering to convert engine evaluations into structured AI responses
-* Provides feedback including:
+* Stockfish gives objective engine evaluations
+* A local LLM (Ollama by default, Gemini/Groq optional) produces qualitative move coaching
+* The coach prompt carries a **VERIFIED FACTS** contract: the move, its grade, FENs, the better move, real tactical motifs (with victim-bound subjects), and a player-pattern snapshot — the model is instructed never to go beyond them
+* The cross-game pattern history (from your saved `game_moves`) is folded into the prompts, so the coach teaches against what you actually do repeatedly
 
-  * Move Quality (Brilliant, Excellent, Good, Mistake, Blunder)
-  * Accuracy Score (0–100)
-  * Blunder Risk
-  * Natural language explanations for moves
+### Deterministic Player Pattern Profiling
 
-### AI + Machine Learning Pipeline
+* Every player move is graded and persisted (`grade`, centipawn loss, capture/check flags, time) in `game_moves`
+* Per-game profiles: phase accuracy, piece-level blunder concentration, time-pressure tilt, capture sharpness, consistency
+* Skill scores (tactics / position / endgame) derived from your measured moves
+* Cross-game summary only reports patterns that recur across ≥ 2 games — single-game quirks are never claimed
 
-* Implements a hybrid AI architecture combining:
-  * Stockfish Chess Engine
-  * Gemini Large Language Model (LLM)
-  * Ensemble Machine Learning Model
-* Sends Stockfish evaluations to the Gemini API using prompt-engineered requests
-* Converts Gemini responses into structured gameplay features
-* Uses these AI-generated features to predict player ELO
-* Drives the adaptive difficulty system in real time
+### Coach Insights Panel
 
-### REST API Integration
+* "Coach" button in the header surfaces your saved-game patterns, skill scores, and recent game history from the local DB
+* Reset-progress action wipes all local data for a fresh start
 
-* FastAPI backend serving ML inference endpoints
-* Gemini API integration for AI move analysis
-* Frontend communicates with backend using REST APIs
-* JSON-based request and response pipeline
+### REST API + Message Logging
 
-### Undo System
-
-* Restores:
-  * Board state
-  * Evaluations
-  * AI analysis
-  * Move history
-  * Bot ELO
-* Keeps frontend and backend state consistent
-
-### Feature Engineering
-
-The prediction model uses multiple gameplay signals:
-
-* Engine evaluation before and after the move
-* Evaluation delta
-* Time taken per move
-* Tactical indicators (check, capture, motifs)
-* Game phase (opening, middlegame, endgame)
-* Move classification
-* Accuracy score generated by Gemini
-* Blunder risk generated by Gemini
-* Previous player ELO
+* Every LLM call (prompt, response, latency, parse count) is logged to the local `llm_calls` table for replay and validation
+* Optional FastAPI backend serves ML Elo-prediction inference; the app falls back cleanly when it isn't running
 
 ---
 
-## AI Architecture
+## Architecture
 
 ```
 Player Move
@@ -104,298 +65,151 @@ Player Move
 Stockfish Evaluation
       │
       ▼
-Prompt Engineering
+Grounded Coach Prompt  ← board facts, motifs, pattern snapshot, pattern history
       │
       ▼
-Gemini API (LLM)
+LLM (Ollama/Gemini/Groq)
       │
       ▼
-Structured AI Response
+Structured Coach Response
       │
       ▼
-Feature Engineering
+Feature Engineering → ML Elo prediction (optional FastAPI)
       │
       ▼
-Ensemble ML Model
-      │
-      ▼
-Predicted Player ELO
-      │
-      ▼
-Adaptive Bot Difficulty
+Adaptive Bot Difficulty (Maia3 / Stockfish / minimax providers)
 ```
 
-This architecture combines deterministic chess engine evaluations with Large Language Model reasoning to generate richer gameplay features for the machine learning model.
+Player moves, games, profiles, and LLM calls persist to `data/local.db` (SQLite, gitignored) — the same shapes the app previously stored in Supabase.
 
 ---
 
-## Tech Stack
+## Quick Start
 
-### Frontend
+### 1. Install frontend dependencies
 
-* Next.js
-* React
-* TypeScript
+```bash
+npm install
+```
 
-### Backend
+### 2. Stockfish engine files
 
-* FastAPI (Python)
-* REST APIs
+The client-side engine loads from `public/stockfish/`:
 
-### AI / LLM / ML
+```bash
+mkdir -p public/stockfish
+curl -L https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js -o public/stockfish/stockfish-17.js
+curl -L https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.wasm -o public/stockfish/stockfish.wasm
+```
 
-* Google Gemini API
-* Prompt Engineering
-* Ensemble Machine Learning Model
-* Stockfish Engine (WASM)
-* Feature Engineering Pipeline
+### 3. Environment (`.env.local`)
+
+No environment variables are strictly required — the app defaults to a local Ollama LLM and creates `data/local.db` on first use.
+
+```env
+# Which LLM backend to use: ollama | gemini | groq (default: ollama)
+LLM_PROVIDER=ollama
+# Local Ollama server (no API key needed)
+OLLAMA_URL=http://localhost:11434
+
+# Only if using Gemini/Groq:
+# GEMINI_API_KEY=your_gemini_api_key
+# GROQ_API_KEY=your_groq_api_key
+
+# Only if running the optional ML Elo-prediction backend:
+# FASTAPI_URL=http://localhost:8000
+```
+
+### 4. Run
+
+```bash
+npm run dev
+```
+
+Open http://localhost:3000. No login — every player is a fixed local persona whose data lives in `data/local.db`.
+
+---
+
+## Optional ML Elo Backend
+
+The in-game Elo estimator that drives adaptive difficulty can call a FastAPI backend (ensemble model for player ELO prediction). It isn't required to run the app — when the backend is down the app keeps the bot at its current ELO. If you want it:
+
+```bash
+cd backend
+pip install -r requirements.txt
+python main.py          # runs on :8000, loads model/ensemble_model.pkl
+```
+
+---
+
+## Evaluation Harness
+
+`eval/` contains reproducible experiments proving the system does what it claims:
+
+- **bot_calibration** — bots at anchored ELOs: claimed vs fitted strength (incl. the Maia3 provider used in the app)
+- **elo_model** — the Elo regression vs baselines (mean / ACPL-only), player-level MAE
+- **grounding** — hallucination rate of coach explanations on fixtures + replayed live calls
+- **tactics** — the deterministic motif engine (forks, pins, skewers, discovered attacks, victim binding)
+- **coach_prompt** — the prompt's VERIFIED FACTS contract (every bullet must appear; schema blocks fabricated fields)
+- **pattern_profile** — the profiler: findings, skill scores, board replay, and the cross-game reducer
+
+```bash
+python3 eval/run_all.py --quick
+```
+
+See `eval/README.md` for details.
 
 ---
 
 ## Project Structure
 
 ```text
-chessmind_ai/
-│
-├── app/                     # Next.js app router
-├── components/              # UI components
-├── lib/                     # ELO logic, Stockfish worker, Gemini integration
-├── backend/                 # FastAPI backend and REST APIs
-├── model/                   # ML model and training scripts
-├── public/stockfish/        # Engine files
-└── .env.local               # Environment variables
+ChessMind_AI/
+├── app/                     # Next.js app router + API routes
+├── components/              # UI (board, panels, modals, Coach Insights)
+├── lib/                     # chess engine, tactics, pattern profiler, bot providers,
+│   │                        # LLM abstraction, coach prompt, ELO prediction
+│   └── db/                  # local SQLite layer (data/local.db, gitignored)
+├── eval/                    # evaluation harness + committed results
+├── backend/                 # optional FastAPI Elo-prediction service
+├── model/                   # ML model + training scripts
+├── public/stockfish/        # engine files
+└── data/local.db            # created at runtime (per-machine personal data)
 ```
-
----
-
-## Setup Instructions
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/your-username/ChessMind_AI.git
-cd ChessMind_AI
-```
-
----
-
-### 2. Install Frontend Dependencies
-
-```bash
-npm install
-
-# or
-
-pnpm install
-```
-
----
-
-### 3. Setup Backend
-
-```bash
-cd backend
-
-python -m venv .venv
-
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-
-pip install -r requirements.txt
-```
-
----
-
-### 4. Environment Variables
-
-Create `.env.local`
-
-```env
-GEMINI_API_KEY=your_api_key_here
-FASTAPI_URL=http://localhost:8000
-```
-
----
-
-### 5. Download ML Model
-
-The trained model is not included in the repository due to size constraints.
-
-Download:
-
-https://drive.google.com/file/d/1AxnfG1vqhdNMgmeJetjM069smXFMX--y/view?usp=sharing
-
-Place it inside
-
-```text
-model/ensemble_model.pkl
-```
-
----
-
-### 6. Setup Stockfish
-
-```bash
-mkdir -p public/stockfish
-
-curl -L https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js \
--o public/stockfish/stockfish-17.js
-
-curl -L https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.wasm \
--o public/stockfish/stockfish.wasm
-```
-
----
-
-### 7. Run the Application
-
-Backend
-
-```bash
-cd backend
-
-python main.py
-```
-
-Frontend
-
-```bash
-npm run dev
-```
-
----
-
-## Access
-
-Open in browser
-
-```
-http://localhost:3000
-```
-
----
-
-## AI Workflow
-
-1. Player makes a move.
-2. Stockfish evaluates the current board position.
-3. Engine evaluations are inserted into a prompt.
-4. The prompt is sent to the Gemini API.
-5. Gemini returns structured AI analysis including move quality, accuracy score, and blunder risk.
-6. Gameplay statistics and AI-generated features are combined.
-7. The FastAPI backend feeds these features into the trained ensemble ML model.
-8. The model predicts the player's ELO.
-9. The chess engine updates its playing strength dynamically.
-
----
-
-## ELO System
-
-### During Game
-
-* Player ELO is predicted after every move
-* Bot difficulty is adjusted incrementally
-* AI-generated gameplay features drive real-time adaptation
-
-### After Game
-
-Player ELO is updated using the standard Elo rating formula:
-
-```
-E = 1 / (1 + 10^((R_opponent - R_player) / 400))
-
-R_new = R_old + K * (S - E)
-```
-
----
-
-## AI Prediction API
-
-### POST `/api/predict-elo`
-
-The FastAPI backend exposes REST endpoints that serve the trained machine learning model. The frontend sends gameplay features—including Stockfish evaluations and Gemini-generated AI insights—to the backend, which returns the predicted player ELO used by the adaptive engine.
-
-**Request**
-
-```json
-{
-  "features": {
-    "move_number": 10,
-    "start_eval": 0.56,
-    "end_eval": 0.58,
-    "delta_eval": 0.02,
-    "move_quality": "Perfect",
-    "time_per_move": 1.76,
-    "accuracy_score": 96,
-    "blunder_risk": "low",
-    "flag1": 0,
-    "flag2": 0,
-    "flag3": 0,
-    "last_elo": 450
-  }
-}
-```
-
----
-
-## Testing
-
-* Make moves and observe bot ELO changes
-* Play weak moves and see difficulty decrease
-* Play strong moves and see difficulty increase
-* Verify AI-generated move analysis after every move
-* Undo a move and verify that ELO and analysis revert correctly
 
 ---
 
 ## Troubleshooting
 
-### Model Not Found
+### No coach analysis appears
+Verify the LLM is reachable:
+* **Ollama**: `curl http://localhost:11434/api/tags` and make sure `LLM_PROVIDER=ollama`
+* **Gemini/Groq**: set the matching `*_API_KEY` and `LLM_PROVIDER`
 
-```bash
-cd model
+### Stockfish
+Ensure `public/stockfish/stockfish-17.js` and `stockfish.wasm` exist (see Quick Start).
 
-python train.py
-```
+### Reset all progress
+Open **Coach → Reset all progress** from the header, or delete `data/local.db` and restart.
 
-### Backend Not Connecting
-
-* Ensure FastAPI is running on port `8000`
-* Verify `FASTAPI_URL` in `.env.local`
-
-### Gemini API Issues
-
-* Verify that `GEMINI_API_KEY` is configured correctly
-* Ensure API quota has not been exceeded
-
-### Stockfish Issues
-
-* Check that engine files exist inside `public/stockfish/`
+### Backend / model
+"The Elo backend is optional; the app degrades gracefully when it can't connect."
 
 ---
 
 ## Future Improvements
 
-* Multiplayer mode
-* User accounts and rating history
-* Game analytics dashboard
+* End-of-game full move review
 * Multi-agent AI coaching system
-* Retrieval-Augmented Generation (RAG) for personalized game analysis
-* Support for multiple LLM providers (OpenAI, Claude, Gemini)
+* RAG / deeper personalized game analysis from the local move database
 * Reinforcement learning for improved adaptive difficulty
-
----
-
-## Contributing
-
-Pull requests are welcome.
+* More LLM provider options
 
 ---
 
 ## Author
 
-**Shreyas**
-**Team Members :- Jayakeerthi,Ullhas V**
----
+**Shreyas** · Team: Jayakeerthi, Ullhas V
 
 ## Notes
 

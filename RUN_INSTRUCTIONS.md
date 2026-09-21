@@ -1,219 +1,71 @@
-# How to Run the Chess Application
+# How to Run ChessMind_AI
 
 ## Prerequisites
-- **Python 3.8+** (for FastAPI backend)
-- **Node.js 18+** (for Next.js frontend)
-- **npm** or **pnpm** (package manager)
+- Node.js 18+
+- npm
+- A chat model on a local Ollama server (default LLM backend) — or Gemini/Groq API keys
+- Optional: Python 3.8+ and a trained `model/ensemble_model.pkl` for the ML Elo backend
 
-## Step-by-Step Instructions
+## Step-by-Step
 
-### Step 1: Install Frontend Dependencies
-
-Open a terminal in the project root directory:
-
+### Step 1: Install dependencies
 ```bash
-# Install Node.js dependencies
 npm install
-# OR if you're using pnpm
-pnpm install
 ```
 
-### Step 2: Install Backend Dependencies
-
+### Step 2: Stockfish engine files
 ```bash
-# Navigate to backend directory
-cd backend
-
-# Install Python dependencies
-pip install -r requirements.txt
-
-# If you have multiple Python versions, use:
-# python3 -m pip install -r requirements.txt
+mkdir -p public/stockfish
+curl -L https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js -o public/stockfish/stockfish-17.js
+curl -L https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.wasm -o public/stockfish/stockfish.wasm
 ```
 
-### Step 3: Set Up Environment Variables
-
-Create a `.env.local` file in the project root (same level as `package.json`):
-
+### Step 3: LLM backend (default: Ollama)
+Ensure Ollama is running with a model (test with `curl http://localhost:11434/api/tags`):
 ```bash
-# In project root
-touch .env.local
+ollama pull gemma2:2b
 ```
 
-Add the following to `.env.local`:
-
+To use Gemini or Groq instead, create `.env.local` in the project root:
 ```env
+LLM_PROVIDER=gemini     # or groq
 GEMINI_API_KEY=your_gemini_api_key_here
-FASTAPI_URL=http://localhost:8000
 ```
+To get a Gemini key: https://makersuite.google.com/app/apikey
 
-**To get a Gemini API key:**
-1. Go to https://makersuite.google.com/app/apikey
-2. Create a new API key
-3. Copy and paste it into `.env.local`
-
-### Step 4: Verify Model Exists
-
-Make sure the trained model exists:
-
+### Step 4: (Optional) ML Elo-prediction backend
 ```bash
-# Check if model file exists
-ls model/ensemble_model.pkl
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r backend/requirements.txt
+cd model && python3 train.py     # produces ensemble_model.pkl
+cd ../backend && python3 main.py # runs :8000
 ```
+The app runs fine without this — it keeps the bot's ELO when the backend is down.
 
-If the file doesn't exist, you need to train the model first:
-
-```bash
-cd model
-python train.py
-```
-
-This will create `ensemble_model.pkl` (this may take a while).
-
-### Step 5: Start FastAPI Backend
-
-Open a **new terminal window** and run:
-
-```bash
-# Navigate to backend directory
-cd backend
-
-# Start the FastAPI server
-python main.py
-
-# OR using uvicorn directly:
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
-
-You should see:
-```
-✅ Model loaded from /path/to/model/ensemble_model.pkl
-INFO:     Uvicorn running on http://0.0.0.0:8000
-```
-
-**Keep this terminal open!** The backend must be running.
-
-### Step 6: Start Next.js Frontend
-
-Open **another new terminal window** and run:
-
-```bash
-# Make sure you're in the project root (not in backend/)
-cd /Users/reyyishreyas/Desktop/chessv2
-
-# Start the Next.js development server
-npm run dev
-# OR
-pnpm dev
-```
-
-You should see:
-```
-✓ Ready in X seconds
-○ Local: http://localhost:3000
-```
-
-### Step 7: Open the Application
-
-Open your browser and go to:
-```
-http://localhost:3000
-```
-
-## Running Both Services
-
-You need **TWO terminal windows** running simultaneously:
-
-**Terminal 1 (Backend):**
-```bash
-cd backend
-python main.py
-```
-
-**Terminal 2 (Frontend):**
+### Step 5: Start the app
 ```bash
 npm run dev
 ```
+Open http://localhost:3000. No login — one local persona writes to `data/local.db`.
 
 ## Quick Test
-
 1. Open http://localhost:3000
 2. Start a new game
-3. Make a move
-4. Check the header - you should see:
-   - Your ELO
-   - Bot ELO (updates dynamically)
-   - Difficulty level
+3. Make a move — the header shows your ELO, bot ELO (updates dynamically), and difficulty
+4. Open **Coach** to see saved-game pattern analysis
 
 ## Troubleshooting
 
-### "Model not found" Error
-```bash
-# Train the model first
-cd model
-python train.py
-```
-
-### "Cannot connect to FastAPI" Error
-- Make sure backend is running on port 8000
-- Check `FASTAPI_URL` in `.env.local` is `http://localhost:8000`
-- Try accessing http://localhost:8000/health in your browser
-
-### "GEMINI_API_KEY not found" Error
-- Make sure `.env.local` exists in project root
-- Restart the Next.js server after adding environment variables
-- Check the key is correct (no extra spaces)
-
-### Port Already in Use
-If port 3000 or 8000 is already in use:
-
-**For Next.js (port 3000):**
-```bash
-PORT=3001 npm run dev
-```
-
-**For FastAPI (port 8000):**
-```bash
-# Edit backend/main.py, change port in uvicorn.run()
-# OR
-uvicorn main:app --reload --port 8001
-# Then update FASTAPI_URL in .env.local to http://localhost:8001
-```
-
-### Python Module Not Found
-```bash
-# Make sure you're using the correct Python
-python --version
-# Should be 3.8+
-
-# Try installing with pip3
-pip3 install -r backend/requirements.txt
-```
+| Problem | Fix |
+| --- | --- |
+| No coach analysis | Check `LLM_PROVIDER` and that Ollama/API is reachable |
+| Stockfish worker errors | Verify `public/stockfish/stockfish-17.js` + `stockfish.wasm` exist |
+| Model / backend not found | Optional features — safe to ignore unless you want ML Elo prediction |
+| Port 3000 busy | `PORT=3001 npm run dev` |
+| Want a fresh start | Coach → Reset all progress, or delete `data/local.db` |
 
 ## Production Build
-
-For production:
-
-**Backend:**
-```bash
-cd backend
-uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-**Frontend:**
 ```bash
 npm run build
 npm start
 ```
-
-## Summary
-
-1. ✅ Install frontend deps: `npm install`
-2. ✅ Install backend deps: `cd backend && pip install -r requirements.txt`
-3. ✅ Create `.env.local` with `GEMINI_API_KEY` and `FASTAPI_URL`
-4. ✅ Start backend: `cd backend && python main.py` (Terminal 1)
-5. ✅ Start frontend: `npm run dev` (Terminal 2)
-6. ✅ Open http://localhost:3000
-
-Both servers must be running at the same time!
-

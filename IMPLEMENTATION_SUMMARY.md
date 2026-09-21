@@ -91,30 +91,37 @@ Where:
 
 ## Setup Instructions
 
-### 1. Install Backend Dependencies
+The app runs fully offline: one Next.js dev server, no accounts, no Supabase/Postgres.
+Player data persists to the local SQLite database `data/local.db` (see `lib/db/db.ts`).
+
+### 1. Install Frontend Dependencies
 ```bash
-cd backend
-pip install -r requirements.txt
+npm install
 ```
 
-### 2. Start FastAPI Backend
-```bash
-cd backend
-python main.py
-# Or: uvicorn main:app --reload --host 0.0.0.0 --port 8000
+### 2. Configure Environment Variables
+Create `.env.local` in project root (optional — defaults apply):
+```
+LLM_PROVIDER=ollama            # ollama | gemini | groq
+OLLAMA_URL=http://localhost:11434
+# GEMINI_API_KEY=your_gemini_api_key
+# FASTAPI_URL=http://localhost:8000   # only if running the ML backend
 ```
 
-### 3. Configure Environment Variables
-Create `.env.local` in project root:
-```
-GEMINI_API_KEY=your_gemini_api_key
-FASTAPI_URL=http://localhost:8000
-```
-
-### 4. Start Next.js Frontend
+### 3. Start the App
 ```bash
 npm run dev
 ```
+Open http://localhost:3000. The fixed local persona's progress is written to `data/local.db`.
+
+### 4. (Optional) ML Elo Backend
+```bash
+cd backend
+pip install -r requirements.txt
+python main.py
+# Or: uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+The app degrades gracefully when this backend isn't running.
 
 ## API Endpoints
 
