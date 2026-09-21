@@ -504,18 +504,16 @@ export function ChessGame() {
 
       try {
         // Instant-feedback path: the deterministic verdict streams in first
-        // (so Elo features/persistence run without waiting), then the coach
-        // sentence streams in clean — the box grows into the final text with
-        // no placeholder-then-swap flash, and the verdict badge stays handy.
+        // (so Elo features/persistence run without waiting). Intermediate
+        // tokens are consumed but not rendered — the box shows one final,
+        // clean, full sentence so there is no big-block-then-shortens flash.
         await streamCoachAnalysis(reqBody, {
           onPreview: (verdict) => {
             setAIAnalysis("")
             setIsAnalyzing(false)
             void runEloPrediction(verdict)
           },
-          onToken: (draft) => {
-            if (draft && draft.trim().length >= 2) setAIAnalysis(draft)
-          },
+          onToken: () => {},
           onDone: (analysis) => {
             if (analysis) setAIAnalysis(analysis)
             setIsAnalyzing(false)

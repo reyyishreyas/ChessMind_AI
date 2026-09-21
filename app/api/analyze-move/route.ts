@@ -1,5 +1,5 @@
 import { generateJSON } from "@/lib/llm"
-import { normalizeMoveQuality } from "@/lib/coach-verdict"
+import { cleanCoachAnalysis, normalizeMoveQuality } from "@/lib/coach-verdict"
 import { type GameState, gameStateToFEN } from "@/lib/chess-engine"
 import { type MotifDetail, type MotifId, detectMotifDetails, detectMotifs } from "@/lib/tactics"
 import type { MoveEvaluation } from "@/lib/adaptive-ai"
@@ -105,7 +105,7 @@ export async function POST(req: Request) {
     }
 
     return Response.json({
-      analysis: String(data.analysis),
+      analysis: cleanCoachAnalysis(String(data.analysis)),
       move_quality: normalizeMoveQuality(String(data.move_quality)),
       accuracy_score: Math.max(0, Math.min(100, Number(data.accuracy_score))),
       blunder_risk: String(data.blunder_risk),

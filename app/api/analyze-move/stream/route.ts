@@ -1,6 +1,6 @@
 import { generateJSON, getProvider, resolveModel } from "@/lib/llm"
 import type { ProviderName } from "@/lib/llm/types"
-import { buildDeterministicVerdict } from "@/lib/coach-verdict"
+import { buildDeterministicVerdict, cleanAnalysis, cleanCoachAnalysis } from "@/lib/coach-verdict"
 import { buildCoachPrompt, buildCoachSentencePrompt, sanFor, type CoachPromptInput } from "@/lib/coach-prompt"
 import { type GameState, gameStateToFEN } from "@/lib/chess-engine"
 import { detectMotifDetails, detectMotifs, type MotifDetail, type MotifId } from "@/lib/tactics"
@@ -128,7 +128,7 @@ export async function POST(req: Request) {
             maxTokens: 120,
             attempts: 1,
           })
-          analysis = cleanSentence(String(data.analysis ?? ""))
+          analysis = cleanCoachAnalysis(String(data.analysis ?? ""))
           emit("token", analysis)
           emit("done", { analysis, success: true, verdict })
           controller.close()
@@ -184,7 +184,7 @@ export async function POST(req: Request) {
               analysis += chunk.response
               // Emit the cleaned, progressively-complete sentence (not raw
               // tokens) so the UI grows into the final text with no swap.
-              const visible = cleanSentence(analysis)
+              const visible = cleanAnalysis(analysis)
               if (visible && visible !== lastEmitted) {
                 lastEmitted = visible
                 emit("token", visible)
@@ -199,7 +199,7 @@ export async function POST(req: Request) {
         }
 
         clearTimeout(timeout)
-        analysis = cleanSentence(analysis)
+        analysis = cleanCoachAnalysis(analysis)
 
         await getWriter().write({
           ts: new Date().toISOString(),
@@ -231,7 +231,7 @@ export async function POST(req: Request) {
           })
         } catch {}
 
-        emit("done", { analysis: cleanSentence(analysis), success: false, error: message, verdict })
+        emit("done", { analysis: cleanCoachAnalysis(analysis), success: false, error: message, verdict })
         controller.close()
       }
     },
@@ -244,18 +244,6 @@ export async function POST(req: Request) {
       Connection: "keep-alive",
     },
   })
-}
-
-function cleanSentence(text: string): string {
-  let t = text.trim()
-  t = t.replace(/^```[\s\S]*?\n/, "").replace(/\n```$/, "")
-  const wrapped = t.match(/\{\s*"analysis"\s*:\s*"([\s\S]*?)"\s*}/)
-  if (wrapped) t = wrapped[1].replace(/\\n/g, " ").replace(/\s+/g, " ").trim()
-  // Strip an in-progress JSON opening so progressive streaming stays clean.
-  t = t.replace(/^\{\s*"analysis"\s*:\s*"/, "")
-  t = t.replace(/^["'“”]+|["'“”]+$/g, "").replace(/[}\]]+\s*$/, "").trim()
-  t = t.replace(/\s+/g, " ").trim()
-  return t
 }
 
 // Cap the length of pattern facts so the prompt stays small (faster prefill).

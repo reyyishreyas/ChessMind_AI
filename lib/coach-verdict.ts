@@ -50,3 +50,33 @@ export function buildDeterministicVerdict(evaluation: MoveEvaluation, flag3: num
     flag3,
   }
 }
+
+/** Strip JSON wrappers, quotes, fences and collapse whitespace. */
+export function cleanAnalysis(text: string): string {
+  let t = String(text ?? "").trim()
+  t = t.replace(/^```[\s\S]*?\n/, "").replace(/\n```$/, "")
+  const wrapped = t.match(/\{\s*"analysis"\s*:\s*"([\s\S]*?)"\s*}/)
+  if (wrapped) t = wrapped[1].replace(/\\n/g, " ").replace(/\s+/g, " ").trim()
+  // Strip an in-progress JSON opening so progressive streaming stays clean.
+  t = t.replace(/^\{\s*"analysis"\s*:\s*"/, "")
+  t = t.replace(/^["'“”]+|["'“”]+$/g, "").replace(/[}\]]+\s*$/, "").trim()
+  return t.replace(/\s+/g, " ").trim()
+}
+
+/**
+ * Reduce model output to ONE full, readable sentence. Skips short greetings
+ * ("Good move!", "Nice!") so the shown sentence is the coaching content that
+ * names the move — never a partial fragment or a rambling paragraph.
+ */
+export function firstSentence(text: string): string {
+  const t = String(text ?? "").replace(/\s+/g, " ").trim()
+  if (!t) return ""
+  const sentences = t.split(/(?<=[.!?])\s+/)
+  const meaningful = sentences.find((s) => s.split(" ").length >= 4)
+  return (meaningful ?? sentences[0] ?? "").trim()
+}
+
+/** Final normalized coaching text for display: one clean full sentence. */
+export function cleanCoachAnalysis(text: string): string {
+  return firstSentence(cleanAnalysis(text))
+}
