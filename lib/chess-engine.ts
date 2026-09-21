@@ -694,7 +694,12 @@ export function moveToAlgebraic(state: GameState, move: Move): string {
 }
 
 // Convert game state to FEN for AI analysis
+const FEN_CACHE = new WeakMap<object, string>()
+
 export function gameStateToFEN(state: GameState): string {
+  const cached = FEN_CACHE.get(state)
+  if (cached) return cached
+
   const pieceToFEN: Record<string, string> = {
     wp: "P",
     wn: "N",
@@ -712,7 +717,6 @@ export function gameStateToFEN(state: GameState): string {
 
   let fen = ""
 
-  // Board position
   for (let row = 0; row < 8; row++) {
     let empty = 0
     for (let col = 0; col < 8; col++) {
@@ -744,5 +748,6 @@ export function gameStateToFEN(state: GameState): string {
   fen += " " + state.halfMoves
   fen += " " + state.fullMoves
 
+  FEN_CACHE.set(state, fen)
   return fen
 }

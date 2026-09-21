@@ -88,7 +88,11 @@ export function validateSuggestion(
   model: string,
 ): CoachSuggestion {
   const fallback = candidates[0]
-  const match = candidates.find((c) => c.from === raw.from && c.to === raw.to)
+  const candidateMap = new Map<string, CoachCandidate>()
+  for (const c of candidates) {
+    candidateMap.set(`${c.from}-${c.to}`, c)
+  }
+  const match = candidateMap.get(`${raw.from}-${raw.to}`) ?? null
   const chosen = match ?? fallback
   const reason = sanitizeReason(raw.reason, chosen)
   return {

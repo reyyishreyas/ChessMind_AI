@@ -537,7 +537,10 @@ const EMPTY_COACH_CONTEXT: CoachContextRow = {
   updated_at: "",
 }
 
+let cachedCoachContext: CoachContextRow | null = null
+
 export function getCoachContext(): CoachContextRow {
+  if (cachedCoachContext) return cachedCoachContext
   const db = getDb()
   const row = db.prepare("select * from coach_context where id = 'local'").get() as
     | {
@@ -559,7 +562,7 @@ export function getCoachContext(): CoachContextRow {
       suggestion = null
     }
   }
-  return {
+  cachedCoachContext = {
     fen: row.fen ?? "",
     suggestion,
     feedback: row.feedback ?? null,
@@ -568,6 +571,11 @@ export function getCoachContext(): CoachContextRow {
     move_no: row.move_no ?? 0,
     updated_at: row.updated_at ?? "",
   }
+  return cachedCoachContext
+}
+
+function invalidateCoachCache(): void {
+  cachedCoachContext = null
 }
 
 function ensureCoachRow(): void {
@@ -586,6 +594,7 @@ export function setCoachSuggestion(suggestion: CoachSuggestion): void {
          move_no = move_no + 1, updated_at = datetime('now')
      where id = 'local'`
   ).run({ fen: suggestion.fen, suggestion: JSON.stringify(suggestion), model: suggestion.model })
+  invalidateCoachCache()
 }
 
 /** Record what the feedback model said, so the suggester can read it next turn. */
@@ -597,11 +606,13 @@ export function setCoachFeedback(fen: string, feedback: string, model: string): 
      set fen = @fen, feedback = @feedback, feedback_model = @model, updated_at = datetime('now')
      where id = 'local'`
   ).run({ fen, feedback, model })
+  invalidateCoachCache()
 }
 
 /** Reset the shared coach bus (new game). */
 export function clearCoachContext(): void {
   getDb().prepare("delete from coach_context where id = 'local'").run()
+  invalidateCoachCache()
 }
 
 /** The suggester's move for `fen` if it still refers to the same position. */

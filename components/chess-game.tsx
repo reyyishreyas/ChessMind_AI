@@ -29,7 +29,7 @@ import {
 } from "@/lib/adaptive-ai"
 import { eloToDifficulty, getAdaptiveDifficulty, STOCKFISH_LEVELS } from "@/lib/stockfish-eval"
 import { chooseBotMove } from "@/lib/bot"
-import { replayPatternEvents, scoresFromEvents } from "@/lib/pattern-profile"
+import { scoresFromEvents } from "@/lib/pattern-profile"
 import {
   collectMoveFeatures,
   predictElo,
@@ -47,9 +47,11 @@ import {
   type CoachHintsPayload,
 } from "@/lib/coach-hints"
 
-let chessGame_lastEloWarn = 0
+  const livePatternMoves = useRef<import("@/lib/pattern-profile").PatternMoveEvent[]>([])
 
-type CoachVerdict = {
+  let chessGame_lastEloWarn = 0
+
+  type CoachVerdict = {
   move_quality: string
   accuracy_score: number
   blunder_risk: "low" | "medium" | "high"
@@ -333,7 +335,7 @@ export function ChessGame() {
     const variance = scores.length > 1 ? scores.reduce((sum, s) => sum + Math.pow(s - ams, 2), 0) / scores.length : 0
     const stdDev = Math.sqrt(variance)
     const avgTime = moveTimes.length > 0 ? moveTimes.reduce((a, b) => a + b, 0) / moveTimes.length : 0
-    const patternMoves = replayPatternEvents(gameHistory, gameEvaluations, moveTimes, playerColor)
+    const patternMoves = livePatternMoves.current
 
     fetch("/api/save-game", {
       method: "POST",
@@ -485,7 +487,22 @@ export function ChessGame() {
   ) => {
     setIsAnalyzing(true)
     try {
-      const patternMoves = replayPatternEvents(gameHistory, gameEvaluations, moveTimes, playerColor)
+      // Incremental pattern events — O(1) per move instead of O(n) full replay.
+      // Only compute the new event; reuse cached previous events from livePatternMoves ref.
+      const prevPiece = stateBefore.board[8 - Number.parseInt(from[1])]?.[from.charCodeAt(0) - 97]?.type ?? null
+      const newEvent: import("@/lib/pattern-profile").PatternMoveEvent = {
+        moveNo: livePatternMoves.current.length + 1,
+        squareFrom: from,
+        squareTo: to,
+        piece: prevPiece,
+        grade: evaluation.type,
+        centipawnLoss: evaluation.centipawnLoss,
+        timeMs: moveTimes.length > 0 ? Math.round(moveTimes[moveTimes.length - 1] * 1000) : null,
+        isCapture: !!stateBefore.board[8 - Number.parseInt(to[1])]?.[to.charCodeAt(0) - 97],
+        isCheck: stateAfter.isCheck,
+      }
+      livePatternMoves.current.push(newEvent)
+      const patternMoves = livePatternMoves.current
       const scores = scoresFromEvents(patternMoves)
       if (playerStats) {
         setPlayerStats((prev) =>
@@ -761,6 +778,7 @@ export function ChessGame() {
     setGameEvaluations([])
     setAIAnalysis("")
     setMoveTimes([])
+    livePatternMoves.current = []
     setMoveStartTime(Date.now())
     setHints(null)
     turnStartRef.current = Date.now()
@@ -798,6 +816,7 @@ export function ChessGame() {
       setMoveNotations((prev) => prev.slice(0, newIndex))
       setGameEvaluations((prev) => prev.slice(0, Math.floor(newIndex / 2)))
       setMoveTimes((prev) => prev.slice(0, Math.floor(newIndex / 2)))
+      livePatternMoves.current = livePatternMoves.current.slice(0, Math.floor(newIndex / 2))
       setSelectedSquare(null)
       setValidMoves([])
       setLastMove(null)
