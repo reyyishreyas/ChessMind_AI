@@ -4,8 +4,13 @@ from sklearn.model_selection import GroupShuffleSplit
 df = pd.read_csv("data.csv")  
 
 groups = df["game_id"]
-X = df.drop(columns=["game_id", "new_elo"])  
-y = df["new_elo"]  
+# Target = per-move ELO *change* (new_elo - last_elo), NOT absolute new_elo.
+# A single move's quality cannot predict an absolute rating (measured: R2 ~ 0.01,
+# MAE ~ 449 = predicting the mean), but it does drive the signed change
+# (Blunder -8.8, Inaccuracy -3.1, Good +1.4, Perfect +4.1). Predicting the change
+# anchors on the player's actual rating while reacting to move quality.
+X = df.drop(columns=["game_id", "new_elo", "last_elo"])
+y = df["new_elo"] - df["last_elo"]  
 
 X = pd.get_dummies(X, columns=["phase"])  
 

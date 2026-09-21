@@ -33,7 +33,6 @@ test_data = pd.DataFrame({
     'flag1': [0],
     'flag2': [0],
     'flag3': [0],
-    'last_elo': [447.99],
     'phase_Endgame': [0],
     'phase_Middlegame': [0],
     'phase_Opening': [1]

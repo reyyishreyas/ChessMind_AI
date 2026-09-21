@@ -139,14 +139,13 @@ async def predict_elo(request: ELOPredictionRequest):
             'flag1': [int(features.flag1)],
             'flag2': [int(features.flag2)],
             'flag3': [int(features.flag3)],
-            'last_elo': [float(features.last_elo)],
             'phase_Endgame': [int(features.phase_Endgame)],  
             'phase_Middlegame': [int(features.phase_Middlegame)],  
             'phase_Opening': [int(features.phase_Opening)]  
         })
         
         try:
-            predicted_elo = predict_with_model(data)
+            predicted_delta = predict_with_model(data)
         except Exception as pred_error:
             error_msg = str(pred_error)
             print(f"Prediction error: {error_msg}")
@@ -154,8 +153,9 @@ async def predict_elo(request: ELOPredictionRequest):
             print(f"DataFrame dtypes:\n{data.dtypes}")
             print(f"DataFrame values:\n{data.iloc[0].to_dict()}")
             raise HTTPException(status_code=500, detail=f"Prediction failed: {error_msg}")
-        elo_int = int(round(predicted_elo))
-        change_int = int(round(elo_int - features.last_elo))
+        # Model predicts the per-move ELO *change*; anchor it on the actual rating.
+        change_int = int(round(float(predicted_delta)))
+        elo_int = int(round(features.last_elo + change_int))
         
         return ELOPredictionResponse(
             predicted_elo=float(elo_int),
