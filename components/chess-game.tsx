@@ -47,8 +47,6 @@ import {
   type CoachHintsPayload,
 } from "@/lib/coach-hints"
 
-  const livePatternMoves = useRef<import("@/lib/pattern-profile").PatternMoveEvent[]>([])
-
   let chessGame_lastEloWarn = 0
 
   type CoachVerdict = {
@@ -145,6 +143,7 @@ export function ChessGame() {
   const [botElo, setBotElo] = useState<number>(STOCKFISH_LEVELS[5]?.elo || 1200)
   const [botEloHistory, setBotEloHistory] = useState<number[]>([]) // Track ELO history for undo
   const [hints, setHints] = useState<CoachHintsPayload | null>(null)
+  const livePatternMoves = useRef<import("@/lib/pattern-profile").PatternMoveEvent[]>([])
 
   // Indicates whether botElo has been initialized at game start
   const botEloInitialized = useRef<boolean>(false)
