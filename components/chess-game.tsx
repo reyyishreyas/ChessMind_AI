@@ -38,6 +38,14 @@ import {
 } from "@/lib/elo-prediction"
 import { Button } from "@/components/ui/button"
 import { CoachInsights } from "./coach-insights"
+import { CoachHints } from "./coach-hints"
+import {
+  buildCoachHints,
+  shouldShowHints,
+  suggestStrongMove,
+  SLOW_TURN_MS,
+  type CoachHintsPayload,
+} from "@/lib/coach-hints"
 
 let chessGame_lastEloWarn = 0
 
@@ -134,6 +142,7 @@ export function ChessGame() {
   const [showCoachInsights, setShowCoachInsights] = useState(false)
   const [botElo, setBotElo] = useState<number>(STOCKFISH_LEVELS[5]?.elo || 1200)
   const [botEloHistory, setBotEloHistory] = useState<number[]>([]) // Track ELO history for undo
+  const [hints, setHints] = useState<CoachHintsPayload | null>(null)
 
   // Indicates whether botElo has been initialized at game start
   const botEloInitialized = useRef<boolean>(false)
@@ -141,6 +150,10 @@ export function ChessGame() {
   const aiMoveInProgress = useRef(false)
   const sessionSaveTimeout = useRef<NodeJS.Timeout | null>(null)
   const gameEndProcessed = useRef(false)
+  const gameStartEloRef = useRef<number | null>(null)
+  const turnIdRef = useRef(0)
+  const turnStartRef = useRef(0)
+  const hintKeyRef = useRef(-1)
 
   useEffect(() => {
     const loadSession = async () => {
@@ -378,6 +391,9 @@ export function ChessGame() {
             const notation = moveToAlgebraic(gameState, newState.history[newState.history.length - 1])
             setMoveNotations((prev) => [...prev, notation])
             setMoveStartTime(Date.now())
+            turnStartRef.current = Date.now()
+            turnIdRef.current += 1
+            void computeCoachHints(newState, [...moveNotations, notation], "post-move")
           }
         }
       } catch (error) {
@@ -390,6 +406,50 @@ export function ChessGame() {
 
     makeAIMove()
   }, [gameState, gameStarted, playerColor, currentDifficulty, playerStats, historyIndex])
+
+  const computeCoachHints = useCallback(
+    async (state: GameState, notes: string[], reason: "post-move" | "slow"): Promise<void> => {
+      if (!playerStats || !gameStarted) return
+      const key = turnIdRef.current
+      const gate = shouldShowHints({
+        skillRating: playerStats.skillRating,
+        gameStartElo: gameStartEloRef.current,
+        slowTurn: reason === "slow",
+        moveCount: notes.length,
+      })
+      if (!gate) {
+        if (reason === "slow") hintKeyRef.current = key
+        return
+      }
+      if (hintKeyRef.current === key) return
+      hintKeyRef.current = key
+
+      const staticHints = buildCoachHints(state, playerColor, notes)
+      setHints((prev) => ({ ...staticHints, suggestion: prev?.suggestion ?? null }))
+
+      const suggestion = await suggestStrongMove(state, playerColor)
+      if (turnIdRef.current === key) {
+        setHints((prev) => ({ ...(prev ?? staticHints), suggestion }))
+      }
+    },
+    [playerStats, gameStarted, playerColor],
+  )
+
+  // Slow-play detection: if it is the player's turn and SLOW_TURN_MS elapses
+  // without a move, give the coach a chance to surface hints mid-game.
+  useEffect(() => {
+    if (!gameStarted || !playerStats) return
+    if (gameState.turn !== playerColor) return
+    if (gameState.isCheckmate || gameState.isStalemate || gameState.isDraw) return
+
+    const id = setInterval(() => {
+      const elapsed = Date.now() - turnStartRef.current
+      if (elapsed >= SLOW_TURN_MS) {
+        void computeCoachHints(gameState, moveNotations, "slow")
+      }
+    }, 1000)
+    return () => clearInterval(id)
+  }, [gameStarted, playerStats, playerColor, gameState.turn, gameState.isCheckmate, gameState.isStalemate, gameState.isDraw, moveNotations, computeCoachHints])
 
   const requestAIAnalysis = async (
     stateBefore: GameState,
@@ -589,6 +649,9 @@ export function ChessGame() {
           if (newState) {
             const moveTime = (Date.now() - moveStartTime) / 1000
             setMoveTimes((prev) => [...prev, moveTime])
+            setHints(null)
+            turnIdRef.current += 1
+            turnStartRef.current = Date.now()
 
             const evaluation = evaluatePlayerMove(stateBefore, selectedSquare, square)
             const moveNumber = Math.floor(moveNotations.length / 2) + 1
@@ -677,6 +740,11 @@ export function ChessGame() {
     setAIAnalysis("")
     setMoveTimes([])
     setMoveStartTime(Date.now())
+    setHints(null)
+    turnStartRef.current = Date.now()
+    turnIdRef.current = 0
+    hintKeyRef.current = -1
+    gameStartEloRef.current = startElo
     setShowSetupModal(false)
     setInitialEloSet(true)
     gameEndProcessed.current = false
@@ -714,6 +782,7 @@ export function ChessGame() {
       setAiLastMove(null)
       setCurrentEvaluation(null)
       setAIAnalysis("")
+      setHints(null)
       
       // Revert bot ELO to previous value
       if (botEloHistory.length > 0) {
@@ -733,6 +802,7 @@ export function ChessGame() {
       const newIndex = Math.min(gameHistory.length - 1, historyIndex + 2)
       setHistoryIndex(newIndex)
       setGameState(gameHistory[newIndex])
+      setHints(null)
     }
   }
 
@@ -887,6 +957,10 @@ export function ChessGame() {
             flipped={playerColor === "b"}
             isThinking={isThinking}
             playerColor={playerColor}
+            hintSquare={hints?.suggestion?.to ?? null}
+            hintFrom={hints?.suggestion?.from ?? null}
+            threatFrom={hints?.threat?.attacker ?? null}
+            threatSquare={hints?.threat?.attacked ?? null}
           />
 
           <div className="w-full max-w-[600px] mt-1 flex items-center gap-2">
@@ -912,6 +986,9 @@ export function ChessGame() {
               onUndo={handleUndo}
             />
           </div>
+
+          {/* Coach hints */}
+          <CoachHints hints={hints} />
 
           {/* Move History - fills remaining space */}
           <div className="flex-1 min-h-0">

@@ -12,6 +12,7 @@ import {
   type PatternMoveEvent,
 } from "@/lib/pattern-profile"
 import { buildCoachPrompt, describeMotifs, sanFor } from "@/lib/coach-prompt"
+import { buildMoveExplanation, describeThreatsForPrompt, oppositeColor } from "@/lib/coach-explain"
 import { getPlayerMoveHistory } from "@/lib/db/db"
 
 export const maxDuration = 30
@@ -71,6 +72,13 @@ export async function POST(req: Request) {
 
   const crossGameFacts = describeCrossGameFacts(summarizePatterns(profilesFromSavedGames(getPlayerMoveHistory())))
 
+  const playerColor = stateBefore?.turn ?? oppositeColor(gameState.turn)
+  const threatFact = describeThreatsForPrompt(gameState, playerColor)
+  const bestMoveReason =
+    evaluation.bestMove && stateBefore
+      ? buildMoveExplanation(stateBefore, evaluation.bestMove.from, evaluation.bestMove.to)
+      : ""
+
   const prompt = buildCoachPrompt({
     stateBefore: stateBefore ?? gameState,
     stateAfter: gameState,
@@ -82,6 +90,8 @@ export async function POST(req: Request) {
     motifDetails,
     playerSan,
     bestSan,
+    bestMoveReason,
+    threatFact,
   })
 
   try {
@@ -89,8 +99,8 @@ export async function POST(req: Request) {
       prompt,
       promptVersion: "analyze-move-v3",
       meta: { fen, fenBefore },
-      temperature: 0.1,
-      maxTokens: 120,
+      temperature: 0.4,
+      maxTokens: 260,
       attempts: 1,
     })
 

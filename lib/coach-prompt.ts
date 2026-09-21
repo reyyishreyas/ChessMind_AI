@@ -27,6 +27,8 @@ export type CoachPromptInput = {
   motifDetails: MotifDetail[]
   playerSan: string
   bestSan: string
+  bestMoveReason: string
+  threatFact: string
 }
 
 export function buildCoachPrompt(input: CoachPromptInput): string {
@@ -41,6 +43,8 @@ export function buildCoachPrompt(input: CoachPromptInput): string {
     motifDetails,
     playerSan,
     bestSan,
+    bestMoveReason,
+    threatFact,
   } = input
 
   const fenBefore = gameStateToFEN(stateBefore)
@@ -63,6 +67,8 @@ VERIFIED FACTS (all correct; never contradict or go beyond them):
 - Position before player move (FEN): ${fenBefore}
 - Position after player move (FEN): ${fen}
 - Better move was: ${bestSan}
+- Why the better move is better: ${bestMoveReason || "not available"}
+- Immediate threat after your move: ${threatFact || "none"}
 - Verified tactical motifs in this move: ${motifFacts || "none"}
 - Recent moves: ${moveHistory.slice(-10).join(", ") || "Game just started"}
 - Player ELO rating: ~${skillRating ?? 1000}
@@ -76,10 +82,16 @@ WARNING RULES:
 4. Only mention squares and pieces that exist in the position.
 5. Do not fabricate move counts, game phases, or openings.
 6. The pattern snapshot and pattern-history lines are verified; you may teach against them, but never add pattern claims beyond them.
+7. Only mention a threat that is in the "Immediate threat" line above.
+
+VARIETY RULES:
+1. Do not reuse a fixed template. Every move must get a fresh explanation.
+2. Never open two replies the same way (avoid always starting with "Good move" or the piece name).
+3. Cite the concrete number (centipawn loss) and the concrete squares/pieces from the facts.
 
 Return ONLY valid JSON:
 {
-  "analysis": "Exactly one short sentence (at most 15 words) naming the move, coaching tone. No filler.",
+  "analysis": "2 to 3 specific sentences (at most 60 words) that explain what the played move did or missed, whether the alternatives line suggests a better idea, and any immediate threat. Concrete, coaching tone, no filler.",
   "move_quality": "Brilliant" | "Good" | "Mistake" | "Blunder" | "Perfect" | "Inaccuracy",
   "accuracy_score": <number between 0 and 100>,
   "blunder_risk": "low" | "medium" | "high"
@@ -101,7 +113,7 @@ export function buildCoachSentencePrompt(input: CoachPromptInput): string {
 
   return `${groundedHeader}
 
-Return ONLY the coaching sentence: exactly one short sentence, at most 15 words, naming the move, coaching tone, no filler. Plain text only — no JSON, no quotes, no labels, no "Analysis:" prefix.`
+Return ONLY the coaching explanation: 2 to 3 specific sentences (at most 60 words) that explain what the played move did or missed, why the better move is better when one is given, and any immediate threat. Follow the VARIETY RULES. Plain text only — no JSON, no quotes, no labels, no "Analysis:" prefix.`
 }
 
 const PIECE_NAMES: Record<string, string> = {

@@ -13,6 +13,10 @@ type ChessBoardProps = {
   flipped?: boolean
   isThinking?: boolean
   playerColor?: "w" | "b"
+  hintSquare?: Square | null
+  hintFrom?: Square | null
+  threatFrom?: Square | null
+  threatSquare?: Square | null
 }
 
 const PIECE_SYMBOLS: Record<string, string> = {
@@ -40,6 +44,10 @@ export function ChessBoard({
   flipped = false,
   isThinking = false,
   playerColor = "w",
+  hintSquare = null,
+  hintFrom = null,
+  threatFrom = null,
+  threatSquare = null,
 }: ChessBoardProps) {
   const rows = flipped ? [7, 6, 5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6, 7]
   const cols = flipped ? [7, 6, 5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6, 7]
@@ -56,6 +64,10 @@ export function ChessBoard({
     const hasPiece = piece !== null
     const isPlayerPiece = piece?.color === playerColor
     const isPlayerTurn = gameState.turn === playerColor
+    const isHintTarget = hintSquare === square
+    const isHintFrom = hintFrom === square
+    const isThreatFrom = threatFrom === square
+    const isThreatTarget = threatSquare === square
 
     return (
       <button
@@ -84,6 +96,22 @@ export function ChessBoard({
           >
             {!hasPiece && <div className="w-2 h-2 md:w-3 md:h-3 rounded-full bg-primary/50" />}
           </div>
+        )}
+
+        {isHintTarget && (
+          <div className="absolute inset-0 z-20 ring-4 ring-inset ring-emerald-400/90 animate-pulse pointer-events-none rounded-sm" />
+        )}
+
+        {isHintFrom && (
+          <div className="absolute inset-0 z-20 ring-2 ring-inset ring-emerald-400/50 pointer-events-none rounded-sm" />
+        )}
+
+        {isThreatTarget && (
+          <div className="absolute inset-0 z-20 ring-4 ring-inset ring-red-500/90 animate-pulse pointer-events-none rounded-sm" />
+        )}
+
+        {isThreatFrom && (
+          <div className="absolute inset-0 z-20 ring-2 ring-inset ring-red-500/60 pointer-events-none rounded-sm" />
         )}
 
         {piece && (

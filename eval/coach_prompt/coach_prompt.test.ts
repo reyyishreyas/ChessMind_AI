@@ -3,6 +3,7 @@ import { test } from "node:test"
 
 import { createInitialState, makeMove, type GameState, type Piece } from "../../lib/chess-engine.ts"
 import { buildCoachPrompt, buildCoachSentencePrompt, describeMotifs, sanFor } from "../../lib/coach-prompt.ts"
+import { cleanCoachAnalysis, cleanCoachParagraph, firstSentence } from "../../lib/coach-verdict.ts"
 import { detectMotifDetails } from "../../lib/tactics.ts"
 import type { MoveEvaluation } from "../../lib/adaptive-ai.ts"
 
@@ -72,6 +73,8 @@ function buildInput(overrides: Partial<Parameters<typeof buildCoachPrompt>[0]> =
     motifDetails: [] as ReturnType<typeof detectMotifDetails>,
     playerSan: "e4",
     bestSan: "N/A",
+    bestMoveReason: "",
+    threatFact: "",
     ...overrides,
   }
 }
@@ -157,4 +160,36 @@ test("sentence prompt keeps the exact VERIFIED FACTS header but drops the JSON s
   assert.ok(!prompt.includes("Return ONLY valid JSON:"))
   assert.ok(!prompt.includes('"analysis"'))
   assert.match(prompt, /Plain text only/)
+  assert.match(prompt, /2 to 3 specific sentences/)
+})
+
+test("prompt carries the threat and better-move reasoning facts", () => {
+  const prompt = buildCoachPrompt(
+    buildInput({
+      bestSan: "Nf3",
+      bestMoveReason: "Play Nf3: it develops your knight toward the center.",
+      threatFact: "their bishop on c5 can capture your queen on f2 (and it is undefended)",
+    })
+  )
+  assert.match(prompt, /- Why the better move is better: Play Nf3: it develops your knight toward the center\./)
+  assert.match(
+    prompt,
+    /- Immediate threat after your move: their bishop on c5 can capture your queen on f2 \(and it is undefended\)/
+  )
+  assert.match(
+    buildCoachPrompt(buildInput({ bestMoveReason: "", threatFact: "" })),
+    /- Immediate threat after your move: none\n/
+  )
+})
+
+test("cleanCoachAnalysis keeps a short paragraph and drops greetings/dupes", () => {
+  const raw =
+    'Good move! {"analysis":"e4 fights for the center. e4 fights for the center. It also opens lines for your bishop and queen. Your opponent can reply with e5."}'
+  const cleaned = cleanCoachAnalysis(raw)
+  assert.equal(
+    cleaned,
+    "e4 fights for the center. It also opens lines for your bishop and queen. Your opponent can reply with e5."
+  )
+  assert.equal(cleanCoachParagraph("e4 fights for the center.", 3), "e4 fights for the center.")
+  assert.equal(firstSentence("Good move! e4 fights for the center."), "e4 fights for the center.")
 })

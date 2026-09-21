@@ -76,7 +76,33 @@ export function firstSentence(text: string): string {
   return (meaningful ?? sentences[0] ?? "").trim()
 }
 
-/** Final normalized coaching text for display: one clean full sentence. */
+/**
+ * Keep a short, readable coaching paragraph (up to `maxSentences`), dropping
+ * greeting fragments and de-duplicating sentences. Used for the in-depth
+ * explanation shown under the board.
+ */
+export function cleanCoachParagraph(text: string, maxSentences = 3): string {
+  const t = cleanAnalysis(text)
+  if (!t) return ""
+  const sentences = t
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.split(" ").length >= 4)
+  const seen = new Set<string>()
+  const kept: string[] = []
+  for (const s of sentences) {
+    const key = s.toLowerCase().replace(/[^a-z0-9 ]/g, "")
+    if (seen.has(key)) continue
+    seen.add(key)
+    kept.push(s)
+    if (kept.length >= maxSentences) break
+  }
+  if (kept.length > 0) return kept.join(" ")
+  const fallback = firstSentence(t)
+  return fallback
+}
+
+/** Final normalized coaching text for display: an in-depth short paragraph. */
 export function cleanCoachAnalysis(text: string): string {
-  return firstSentence(cleanAnalysis(text))
+  return cleanCoachParagraph(text)
 }

@@ -72,6 +72,10 @@ if __name__ == "__main__":
         "pattern_profile",
         ["node", "--test", str(ROOT / "pattern_profile" / "pattern_profile.test.ts")],
     ) if (ROOT / "pattern_profile" / "pattern_profile.test.ts").exists() else False
+    statuses["coach_hints"] = run_shell(
+        "coach_hints",
+        ["node", "--test", str(ROOT / "coach_hints" / "coach_hints.test.ts")],
+    ) if (ROOT / "coach_hints" / "coach_hints.test.ts").exists() else False
 
     print("\n=== SUMMARY ===")
     for name, ok in statuses.items():
