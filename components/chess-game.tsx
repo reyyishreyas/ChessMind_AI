@@ -540,6 +540,23 @@ export function ChessGame() {
         predictionRan = true
         if (!playerStats || !botElo) return
         try {
+          // Optimistic ELO update from coach verdict — visible immediately.
+          // Refined by backend prediction when it arrives.
+          const eloDelta =
+            verdict.blunder_risk === "high"
+              ? 8
+              : verdict.blunder_risk === "medium"
+                ? 4
+                : verdict.move_quality === "Blunder" || verdict.move_quality === "Mistake"
+                  ? 6
+                  : verdict.move_quality === "Good" || verdict.move_quality === "Perfect"
+                    ? -3
+                    : -1
+          const optimisticElo = Math.max(400, Math.min(2200, botElo + eloDelta))
+          setBotEloHistory((prev) => [...prev, botElo])
+          setBotElo(Math.round(optimisticElo))
+          setCurrentDifficulty(eloToDifficulty(optimisticElo) as DifficultyLevel)
+
           console.log("✨ Starting ELO prediction process...")
           const features = await collectMoveFeatures(
             stateBefore,
@@ -548,7 +565,7 @@ export function ChessGame() {
             to,
             moveNumber,
             timePerMove,
-            botElo, // last_elo = bot's current ELO (model predicts new bot ELO)
+            botElo,
             evaluation,
             {
               move_quality: verdict.move_quality,
@@ -559,11 +576,8 @@ export function ChessGame() {
             playerColor
           )
 
-          // Only predict if features are valid
           if (features && typeof features.last_elo === "number" && features.last_elo > 0) {
             console.log("🔮 Predicting bot ELO with features:", features)
-
-            // Call backend model to get new bot ELO
             const prediction = await predictElo(features)
             console.log("📊 Backend prediction response:", prediction)
 

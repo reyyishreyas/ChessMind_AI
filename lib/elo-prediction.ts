@@ -5,8 +5,6 @@
 import type { GameState, Square } from "./chess-engine"
 import type { MoveEvaluation } from "./adaptive-ai"
 import { evaluatePosition } from "./adaptive-ai"
-import { getStockfish } from "./stockfish-worker"
-import { gameStateToFEN } from "./chess-engine"
 
 export interface MoveFeatures {
   move_number: number
@@ -67,13 +65,6 @@ export function isCheck(stateAfter: GameState, playerColor: "w" | "b"): number {
 }
 
 /**
- * Convert centipawns to evaluation (pawns)
- */
-export function centipawnsToPawns(centipawns: number): number {
-  return centipawns / 100
-}
-
-/**
  * Collect all features for a move
  */
 export async function collectMoveFeatures(
@@ -93,27 +84,16 @@ export async function collectMoveFeatures(
   },
   playerColor: "w" | "b"
 ): Promise<MoveFeatures> {
-  // Get evaluations (centipawns) from Stockfish if available, fallback to heuristic
-  let startCp: number
-  let endCp: number
-  try {
-    const fenBefore = gameStateToFEN(stateBefore)
-    const fenAfter = gameStateToFEN(stateAfter)
-    const engine = getStockfish()
-    startCp = await engine.evaluatePosition(fenBefore, 12)
-    endCp = await engine.evaluatePosition(fenAfter, 12)
-  } catch {
-    startCp = evaluatePosition(stateBefore)
-    endCp = startCp - (evaluation.centipawnLoss || 0)
-  }
-  const startEval = centipawnsToPawns(startCp)
-  const endEval = centipawnsToPawns(endCp)
+  // Use deterministic evaluation from the same minimax engine that grades
+  // the player — synchronous, no Stockfish latency. Maintains consistency
+  // since both the ELO model input and move grading use the same evaluator.
+  const startEval = evaluatePosition(stateBefore) / 100
+  const endEval = startEval - (evaluation.centipawnLoss || 0) / 100
   const deltaEval = endEval - startEval
 
-  // Keep Stockfish white-perspective values to match training data
   const normalizedStartEval = startEval
   const normalizedEndEval = endEval
-  const normalizedDeltaEval = normalizedEndEval - normalizedStartEval
+  const normalizedDeltaEval = deltaEval
 
   // Get flags
   const flag1 = isCapture(stateBefore, from, to)
@@ -171,6 +151,8 @@ export async function predictElo(features: MoveFeatures): Promise<{
   }
 
   try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 3000)
     const response = await fetch("/api/predict-elo", {
       method: "POST",
       headers: {
@@ -179,7 +161,9 @@ export async function predictElo(features: MoveFeatures): Promise<{
       body: JSON.stringify({
         features,
       }),
+      signal: controller.signal,
     })
+    clearTimeout(timeout)
 
     if (!response.ok) {
       let errorMessage = response.statusText
@@ -210,6 +194,15 @@ export async function predictElo(features: MoveFeatures): Promise<{
       success: data.success !== false,
     }
   } catch (error) {
+    // Timeout — backend is slow, use fallback ELO
+    if (error instanceof DOMException && error.name === "AbortError") {
+      console.warn("⚠️ ELO prediction timed out, keeping current bot ELO")
+      return {
+        predicted_elo: features.last_elo,
+        elo_change: 0,
+        success: false,
+      }
+    }
     // Log connection errors for debugging
     if (error instanceof TypeError && error.message.includes("fetch")) {
       console.warn("⚠️ Backend not available for ELO prediction")
