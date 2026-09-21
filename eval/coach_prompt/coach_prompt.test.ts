@@ -182,6 +182,14 @@ test("prompt carries the threat and better-move reasoning facts", () => {
   )
 })
 
+test("prompt forbids unverified positional claims in both variants", () => {
+  const json = buildCoachPrompt(buildInput())
+  const sentence = buildCoachSentencePrompt(buildInput())
+  assert.match(json, /Do not invent your own positional judgments/)
+  assert.match(sentence, /Do not invent your own positional judgments/)
+  assert.match(json, /no positional claims of your own/)
+})
+
 test("cleanCoachAnalysis keeps a short paragraph and drops greetings/dupes", () => {
   const raw =
     'Good move! {"analysis":"e4 fights for the center. e4 fights for the center. It also opens lines for your bishop and queen. Your opponent can reply with e5."}'

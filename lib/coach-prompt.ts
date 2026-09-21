@@ -83,6 +83,7 @@ WARNING RULES:
 5. Do not fabricate move counts, game phases, or openings.
 6. The pattern snapshot and pattern-history lines are verified; you may teach against them, but never add pattern claims beyond them.
 7. Only mention a threat that is in the "Immediate threat" line above.
+8. Do not invent your own positional judgments (space, structure, development, sacrifices). Describe the played move using only: the grade, the centipawn loss, the better-move reason, and the threat.
 
 VARIETY RULES:
 1. Do not reuse a fixed template. Every move must get a fresh explanation.
@@ -91,7 +92,7 @@ VARIETY RULES:
 
 Return ONLY valid JSON:
 {
-  "analysis": "2 to 3 specific sentences (at most 60 words) that explain what the played move did or missed, whether the alternatives line suggests a better idea, and any immediate threat. Concrete, coaching tone, no filler.",
+  "analysis": "2 to 3 specific sentences (at most 60 words) that explain what the played move did or missed, whether the alternatives line suggests a better idea, and any immediate threat. Use only the facts above — no positional claims of your own. Concrete, coaching tone, no filler.",
   "move_quality": "Brilliant" | "Good" | "Mistake" | "Blunder" | "Perfect" | "Inaccuracy",
   "accuracy_score": <number between 0 and 100>,
   "blunder_risk": "low" | "medium" | "high"
