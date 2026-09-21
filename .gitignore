@@ -23,6 +23,13 @@ __pycache__/
 venv/
 
 model/ensemble_model.pkl
+model/X_train.csv
+model/X_test.csv
+model/y_train.csv
+model/y_test.csv
+model/catboost_info/
+model/feature_importance.png
+model/model_report.json
 
 # OS files
 .DS_Store

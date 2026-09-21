@@ -4,15 +4,22 @@ FastAPI backend for dynamic ELO prediction using the trained ensemble model.
 
 ## Setup
 
-1. Install dependencies:
+1. Install dependencies (use Python 3.12/3.13 — the older pins formerly here didn't
+   build on Python 3.14):
 ```bash
-cd backend
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
 2. Make sure the trained model exists:
 - The model should be at `../model/ensemble_model.pkl`
-- If not, train the model first using `../model/train.py`
+- If not, train it:
+```bash
+cd model
+python3 data_split.py          # splits data.csv into train/test by game_id
+python3 train.py               # full ensemble (slow)
+python3 train.py --fast        # reduced ensemble for laptops (a few minutes)
+```
 
 3. Set environment variables (optional):
 ```bash

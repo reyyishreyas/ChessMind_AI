@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import warnings
 import pickle
@@ -57,7 +58,7 @@ class UltraChessELOPredictor:
                 else:
                     self.numeric_features.append(col)
             else:
-                self.numeric_features.append(col)
+                self.categorical_features.append(col)
 
     def create_advanced_features(self, X):
         X_new = X.copy()
@@ -288,12 +289,18 @@ class UltraChessELOPredictor:
 
 
 if __name__ == "__main__":
+    fast_mode = "--fast" in sys.argv
+    if fast_mode:
+        print("Fast mode: reduced ensemble sizes")
+    else:
+        print("Full mode: large ensemble (slow on laptops)")
+
     X_train = pd.read_csv('X_train.csv')
     X_test = pd.read_csv('X_test.csv')
     y_train = pd.read_csv('y_train.csv').values.ravel()
     y_test = pd.read_csv('y_test.csv').values.ravel()
 
-    predictor = UltraChessELOPredictor(fast_mode=False)
+    predictor = UltraChessELOPredictor(fast_mode=fast_mode)
 
     predictor.train(X_train, y_train)
 
