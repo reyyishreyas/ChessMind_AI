@@ -223,7 +223,7 @@ Open **Coach → Reset all progress** from the header, or delete `data/local.db`
 
 ## Author
 
-**Shreyas** · Team: Jayakeerthi, Ullhas V
+**Shreyas**
 
 ## Notes
 
