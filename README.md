@@ -14,6 +14,7 @@ In this project, the idea is to keep the game competitive at all times. The syst
 - If you're struggling, the bot eases difficulty within limits
 - ELO is updated based on actual performance (and your patterns, not just ACPL)
 - Every move is analyzed with Stockfish evaluations and LLM feedback
+- **Two coordinated coach models** share one memory: a suggester picks from verified candidates, a feedback model reads that suggestion and coaches without contradicting it
 - Every move you make is persisted locally, so the coach learns your recurring patterns across games
 - **Fully offline**: progress, games, and coaching context live in a local SQLite database — no accounts, no auth server, no Supabase, no Postgres
 
@@ -37,6 +38,15 @@ The goal is a realistic, intelligent, self-contained training environment.
 * The coach prompt carries a **VERIFIED FACTS** contract: the move, its grade, FENs, the better move, real tactical motifs (with victim-bound subjects), and a player-pattern snapshot — the model is instructed never to go beyond them
 * The cross-game pattern history (from your saved `game_moves`) is folded into the prompts, so the coach teaches against what you actually do repeatedly
 
+### Two-Model Shared-Memory Coaching
+
+The coach runs as two coordinated LLM roles that share one state (`coach_context`, persisted in SQLite):
+
+* **Suggester** — after each bot move, it picks ONE move from the engine's top-5 verified candidates (ranked by the same `rankMoves` evaluator that grades the player) and explains it. The pick is written to shared memory and rendered as the on-board hint.
+* **Feedback** — on the player's next move, it reads the suggester's stored suggestion from shared memory and must never contradict it: if the player followed the hint, it confirms; if not, it compares against it.
+* Both prompts carry the VERIFIED FACTS contract — neither model may introduce positional claims of its own, and the suggester sees the feedback coach's prior message (closing the loop across turns).
+* The two roles can use different models via `resolveCoachModel(provider, "suggester")`.
+
 ### Deterministic Player Pattern Profiling
 
 * Every player move is graded and persisted (`grade`, centipawn loss, capture/check flags, time) in `game_moves`
@@ -59,16 +69,21 @@ The goal is a realistic, intelligent, self-contained training environment.
 ## Architecture
 
 ```
-Player Move
+After each bot move:
+Engine ranks top-5 candidates (same evaluator that grades the player)
       │
       ▼
-Stockfish Evaluation
-      │
+Suggester LLM ── picks one move + explains ──► shared coach_context (SQLite)
+      (also shown as the on-board hint)               │
+                                                      │
+On the player's next move:                            │
+Player Move → Stockfish Evaluation                    │
+      │                                               │
+      ▼                                               ▼
+Grounded Feedback Prompt  ← board facts, motifs, pattern snapshot,
+      │                      pattern history, prior suggestion ◄─┘
       ▼
-Grounded Coach Prompt  ← board facts, motifs, pattern snapshot, pattern history
-      │
-      ▼
-LLM (Ollama/Gemini/Groq)
+Feedback LLM (reads suggestion; never contradicts it)
       │
       ▼
 Structured Coach Response
@@ -200,7 +215,6 @@ Open **Coach → Reset all progress** from the header, or delete `data/local.db`
 ## Future Improvements
 
 * End-of-game full move review
-* Multi-agent AI coaching system
 * RAG / deeper personalized game analysis from the local move database
 * Reinforcement learning for improved adaptive difficulty
 * More LLM provider options
