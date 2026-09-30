@@ -1,5 +1,7 @@
 # ChessMind_AI
 
+[![CI](https://github.com/reyyishreyas/ChessMind_AI/actions/workflows/ci.yml/badge.svg)](https://github.com/reyyishreyas/ChessMind_AI/actions/workflows/ci.yml)
+
 An adaptive AI-powered chess trainer that adjusts its playing strength in real time based on how you're performing, and coaches you through every move. Combines Stockfish analysis, a local LLM, machine learning, and a deterministic player-pattern profiler — all fully offline after setup.
 
 ---
@@ -14,7 +16,7 @@ In this project, the idea is to keep the game competitive at all times. The syst
 - If you're struggling, the bot eases difficulty within limits
 - ELO is updated based on actual performance (and your patterns, not just ACPL)
 - Every move is analyzed with Stockfish evaluations and LLM feedback
-- **Two coordinated coach models** share one memory: a suggester picks from verified candidates, a feedback model reads that suggestion and coaches without contradicting it
+- **Two coordinated coach models** share one memory: a suggester explains the engine-gated canonical move, a feedback model reads that suggestion and coaches without contradicting it
 - Every move you make is persisted locally, so the coach learns your recurring patterns across games
 - **Fully offline**: progress, games, and coaching context live in a local SQLite database — no accounts, no auth server, no Supabase, no Postgres
 
@@ -30,6 +32,8 @@ The goal is a realistic, intelligent, self-contained training environment.
 * Updates bot ELO incrementally within thresholds
 * Avoids sudden jumps in difficulty
 * Updates player ELO after the game ends using the standard Elo formula
+* A live header chip shows whether the trained ensemble model (**Model**) or the verdict-based fallback (**Heuristic**) is driving the dynamic Elo
+* The sidebar shows a sparkline of the bot Elo trajectory for the current game, and the result modal summarizes how far the bot adapted
 
 ### Grounded Real-Time Coaching
 
@@ -42,7 +46,8 @@ The goal is a realistic, intelligent, self-contained training environment.
 
 The coach runs as two coordinated LLM roles that share one state (`coach_context`, persisted in SQLite):
 
-* **Suggester** — after each bot move, it picks ONE move from the engine's top-5 verified candidates (ranked by the same `rankMoves` evaluator that grades the player) and explains it. The pick is written to shared memory and rendered as the on-board hint.
+* **Suggester** — after each bot move, it explains THE coach move for the position. Candidates come from the same `rankMoves` evaluator that grades the player, filtered to moves **tied for best (0 cp)** — the grader labels any positive loss as inaccuracy-or-worse, so a player who follows a hint can never be graded below "good". The canonical move is candidate 1 and the only move the model may recommend; it writes the explanation.
+* **One canonical move everywhere** — `canonicalCoachMove` prefers a sound engine-best fork when one exists (the tactic IS the move), otherwise the engine's best. The hint chip, board arrow, fork chip, suggester output and the feedback facts all derive from it, so the coach never shows a tactic on one move and "Try" on another.
 * **Feedback** — on the player's next move, it reads the suggester's stored suggestion from shared memory and must never contradict it: if the player followed the hint, it confirms; if not, it compares against it.
 * Both prompts carry the VERIFIED FACTS contract — neither model may introduce positional claims of its own, and the suggester sees the feedback coach's prior message (closing the loop across turns).
 * The two roles can use different models via `resolveCoachModel(provider, "suggester")`.
@@ -70,10 +75,10 @@ The coach runs as two coordinated LLM roles that share one state (`coach_context
 
 ```
 After each bot move:
-Engine ranks top-5 candidates (same evaluator that grades the player)
+Engine ranks tied-best candidates (same evaluator that grades the player)
       │
       ▼
-Suggester LLM ── picks one move + explains ──► shared coach_context (SQLite)
+Suggester LLM ── explains canonical move ──► shared coach_context (SQLite)
       (also shown as the on-board hint)               │
                                                       │
 On the player's next move:                            │
@@ -143,17 +148,48 @@ npm run dev
 
 Open http://localhost:3000. No login — every player is a fixed local persona whose data lives in `data/local.db`.
 
+Other scripts: `npm run lint` (eslint) · `npm run typecheck` · `npm test` (eval unit tests) · `npm run build` · `npm run backend` (ML Elo service on :8000) · `npm run dev:elo` (app + Elo backend together). CI runs the first four on every push and pull request.
+
 ---
 
 ## Optional ML Elo Backend
 
-The in-game Elo estimator that drives adaptive difficulty can call a FastAPI backend (ensemble model for player ELO prediction). It isn't required to run the app — when the backend is down the app keeps the bot at its current ELO. If you want it:
+The in-game Elo estimator that drives adaptive difficulty can call a FastAPI backend (ensemble model for player ELO prediction). It isn't required to run the app — when the backend is down the app keeps the bot at its current ELO (the header chip switches from **Model** to **Heuristic**). If you want it:
 
 ```bash
-cd backend
-pip install -r requirements.txt
-python main.py          # runs on :8000, loads model/ensemble_model.pkl
+# one-time setup
+python3 -m venv .venv && .venv/bin/pip install -r backend/requirements.txt
+
+npm run backend    # runs on :8000, loads model/ensemble_model.pkl
+# or run the app and the backend together:
+npm run dev:elo
 ```
+
+The app probes the backend when a game starts (and after every prediction), so the header chip always reflects the real state.
+
+### The trained model
+
+The backend serves an **8-model stacking ensemble** (LightGBM, XGBoost, CatBoost, Random Forest, Extra Trees, Ridge, Elastic Net, MLP) that predicts the bot-Elo adjustment from 37 engineered per-move features: eval delta, move quality, time per move, accuracy, blunder risk, and their phase interactions.
+
+| Held-out metric (10,032 test samples) | Value  |
+| ------------------------------------- | ------ |
+| R²                                    | 0.959  |
+| Mean absolute error                   | 0.76 Elo |
+| RMSE                                  | 1.00   |
+| Median absolute error                 | 0.63   |
+
+- Full training report: [`model/model_report.json`](model/model_report.json)
+- Feature importances: [`model/feature_importance.png`](model/feature_importance.png)
+- Training pipeline: [`model/train.py`](model/train.py) · splits: [`model/data_split.py`](model/data_split.py) · data: [`model/data.csv`](model/data.csv)
+- Inference: ~160 ms per move through [`backend/main.py`](backend/main.py)
+
+The trained weights (`model/ensemble_model.pkl`, ~905 MB) are gitignored. Retrain them locally from the committed data (needs the ML training dependencies imported by `train.py`):
+
+```bash
+cd model && python3 data_split.py && python3 train.py --fast   # ~8 min
+```
+
+Run `python3 train.py` without `--fast` for the full training budget.
 
 ---
 
@@ -166,6 +202,7 @@ python main.py          # runs on :8000, loads model/ensemble_model.pkl
 - **grounding** — hallucination rate of coach explanations on fixtures + replayed live calls
 - **tactics** — the deterministic motif engine (forks, pins, skewers, discovered attacks, victim binding)
 - **coach_prompt** — the prompt's VERIFIED FACTS contract (every bullet must appear; schema blocks fabricated fields)
+- **coach_suggest** — suggestion contracts: candidates are tied-for-best, the canonical move comes first, the model only writes the explanation
 - **pattern_profile** — the profiler: findings, skill scores, board replay, and the cross-game reducer
 
 ```bash
@@ -180,6 +217,7 @@ See `eval/README.md` for details.
 
 ```text
 ChessMind_AI/
+├── .github/workflows/       # CI: lint, typecheck, tests, build
 ├── app/                     # Next.js app router + API routes
 ├── components/              # UI (board, panels, modals, Coach Insights)
 ├── lib/                     # chess engine, tactics, pattern profiler, bot providers,
@@ -208,7 +246,7 @@ Ensure `public/stockfish/stockfish-17.js` and `stockfish.wasm` exist (see Quick 
 Open **Coach → Reset all progress** from the header, or delete `data/local.db` and restart.
 
 ### Backend / model
-"The Elo backend is optional; the app degrades gracefully when it can't connect."
+The Elo backend is optional; the app degrades gracefully when it can't connect.
 
 ---
 
