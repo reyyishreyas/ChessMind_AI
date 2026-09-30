@@ -1,5 +1,5 @@
-import { type GameState, getAllLegalMoves, makeMove, type Piece, type PieceType, type Square } from "./chess-engine"
-import { STOCKFISH_LEVELS, getMoveGrade, STOCKFISH_THRESHOLDS, calculateEloChange } from "./stockfish-eval"
+import { type GameState, getAllLegalMoves, makeMove, type Piece, type PieceType, type Square } from "./chess-engine.ts"
+import { STOCKFISH_LEVELS, getMoveGrade, STOCKFISH_THRESHOLDS, calculateEloChange } from "./stockfish-eval.ts"
 
 export type DifficultyLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
 

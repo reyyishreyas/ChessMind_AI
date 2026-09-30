@@ -7,7 +7,9 @@ import {
   buildSuggestion,
   pickForkMove,
   shouldShowHints,
+  suggestStrongMove,
 } from "../../lib/coach-hints.ts"
+import { rankMoves } from "../../lib/adaptive-ai.ts"
 import { findThreats, pickTopThreat, describeThreatsAfterMove } from "../../lib/coach-explain.ts"
 import { detectOpening } from "../../lib/opening.ts"
 
@@ -101,6 +103,34 @@ test("fork: a knight move that forks queen and rook is detected", () => {
 test("no fork when captures are not legal", () => {
   const state = fenToState("4r1k1/8/8/4N3/8/8/8/7K w - - 0 1")
   assert.equal(pickForkMove(state, "w"), null)
+})
+
+test("fork hint is dropped when it is not the engine's best move", () => {
+  // Geometrically Nf3 still forks queen and rook, but Bxf3 refutes it
+  // (60 cp loss), so the grader would label it an inaccuracy if the player
+  // followed the hint — the gate must drop it.
+  const state = fenToState("7k/8/8/4q3/3r2b1/8/8/K5N1 w - - 0 1")
+  assert.equal(pickForkMove(state, "w"), null)
+})
+
+test("hint suggestion is the canonical move (grader's best when no tactic exists)", async () => {
+  // No external engine involved: the hint always derives from
+  // canonicalCoachMove, so the "Try" chip, board arrow and feedback facts
+  // agree on one move — here the opening position has no fork, so the
+  // grader's own best move is recommended.
+  const state = fenToState("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+  const hint = await suggestStrongMove(state, "w")
+  assert.ok(hint, "expected a hint")
+  const ranked = rankMoves(state, 5)
+  assert.equal(hint!.from, ranked[0].from)
+  assert.equal(hint!.to, ranked[0].to)
+})
+
+test("hint suggestion prefers a sound fork: tactic and Try chip agree", async () => {
+  const state = fenToState("7k/8/8/4q3/3r4/8/8/K5N1 w - - 0 1")
+  const hint = await suggestStrongMove(state, "w")
+  assert.equal(hint?.san, "Nf3")
+  assert.equal(pickForkMove(state, "w")?.san, "Nf3")
 })
 
 test("opening detection picks the longest matching line", () => {

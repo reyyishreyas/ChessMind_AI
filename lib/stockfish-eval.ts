@@ -1,4 +1,4 @@
-import type { PlayerStats, MoveEvaluation } from "./adaptive-ai"
+import type { PlayerStats, MoveEvaluation } from "./adaptive-ai.ts"
 
 // Stockfish 17 centipawn evaluation thresholds
 export const STOCKFISH_THRESHOLDS = {

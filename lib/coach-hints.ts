@@ -4,12 +4,11 @@ import {
   type PieceType,
   type Square,
   coordsToSquare,
-  gameStateToFEN,
   getPieceAt,
   getValidMoves,
 } from "./chess-engine.ts"
 import { attackedEnemies } from "./tactics.ts"
-import { getStockfish } from "./stockfish-worker.ts"
+import { rankMoves } from "./adaptive-ai.ts"
 import { detectOpening } from "./opening.ts"
 import {
   PIECE_LABELS,
@@ -106,7 +105,16 @@ export function pickForkMove(state: GameState, playerColor: PieceColor): ForkHin
         `so you win the other on your next move.`,
     }
   }
-  return best
+  if (!best) return null
+  // The fork must also be tied for best under the grader that will label the
+  // player's move — a fork that is refuted or second-best would come back as
+  // inaccuracy/mistake/blunder the moment the player follows the hint.
+  const chosen = best
+  const ranked = rankMoves(state, 20)
+  const engineBest = ranked.some(
+    (m) => m.from === chosen.from && m.to === chosen.to && m.centipawnLoss === 0,
+  )
+  return engineBest ? chosen : null
 }
 
 function getAllPlayerMoves(state: GameState, color: PieceColor): { from: Square; to: Square }[] {
@@ -140,17 +148,25 @@ function applyForForkPreview(state: GameState, from: Square, to: Square): GameSt
   return { ...state, board }
 }
 
+/**
+ * The one move the coach recommends for a position: a sound engine-best fork
+ * when one exists (the tactic IS the move to play), otherwise the grader's own
+ * best move. Every surface — hint chip, board arrow, fork chip, suggester
+ * candidates and the feedback facts — derives from this, so the player never
+ * sees a tactic on one move and "Try" on another.
+ */
+export function canonicalCoachMove(state: GameState): CoachHintSuggestion | null {
+  const fork = pickForkMove(state, state.turn)
+  if (fork) return buildSuggestion(state, fork.from, fork.to)
+  const ranked = rankMoves(state, 20)
+  if (ranked.length === 0) return null
+  return buildSuggestion(state, ranked[0].from, ranked[0].to)
+}
+
+/** Hint chip entry point: always the canonical move (see `canonicalCoachMove`). */
 export async function suggestStrongMove(state: GameState, playerColor: PieceColor): Promise<CoachHintSuggestion | null> {
   if (state.turn !== playerColor) return null
-  try {
-    const engine = getStockfish()
-    await engine.init()
-    const msg = await engine.getBestMove(gameStateToFEN(state), 2, 0)
-    if (msg.type !== "bestmove" || !msg.bestMove || msg.bestMove === "(none)") return null
-    return buildSuggestion(state, msg.bestMove.slice(0, 2) as Square, msg.bestMove.slice(2, 4) as Square)
-  } catch {
-    return null
-  }
+  return canonicalCoachMove(state)
 }
 
 export type HintGateInput = {
