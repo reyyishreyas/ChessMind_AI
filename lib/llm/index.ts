@@ -87,6 +87,7 @@ export async function generateJSON<T>(
         model,
         temperature: opts.temperature,
         maxTokens: opts.maxTokens,
+        signal: opts.signal,
       })
 
       let data: T

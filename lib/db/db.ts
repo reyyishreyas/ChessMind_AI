@@ -462,6 +462,20 @@ export function getPlayerMoveHistory(): SavedMoveRow[] {
     .all(LOCAL_USER_ID) as SavedMoveRow[]
 }
 
+/**
+ * Cheap version token for `game_moves` (row count + newest rowid).
+ * Memoized readers compare it to skip rebuilds when nothing was saved.
+ */
+export function gameMovesVersion(): string {
+  const db = getDb()
+  const row = db
+    .prepare(
+      `select count(*) as n, coalesce(max(rowid), 0) as m from game_moves where user_id = ?`
+    )
+    .get(LOCAL_USER_ID) as { n: number; m: number }
+  return `${row.n}:${row.m}`
+}
+
 /** One finished game as persisted in `game_stats` (camelCase mirror of the schema). */
 export type GameHistoryRow = {
   id: string

@@ -5,6 +5,8 @@ export interface GenerateTextOptions {
   model: string
   temperature?: number
   maxTokens?: number
+  /** Cancellation for the underlying request (used by the Ollama lane). */
+  signal?: AbortSignal
 }
 
 export interface LLMResult {

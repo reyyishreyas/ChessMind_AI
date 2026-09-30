@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server"
-import { getGameHistory, getPlayerMoveHistory, getProfile } from "@/lib/db/db"
-import {
-  describeCrossGameFacts,
-  profilesFromSavedGames,
-  summarizePatterns,
-} from "@/lib/pattern-profile"
+import { getGameHistory, getProfile } from "@/lib/db/db"
+import { getCachedCrossGame } from "@/lib/cross-game-facts"
 
 export const dynamic = "force-dynamic"
 
@@ -13,10 +9,10 @@ export const dynamic = "force-dynamic"
 // shows the same grounded facts the coach prompt receives.
 export async function GET() {
   const profile = getProfile()
-  const summary = summarizePatterns(profilesFromSavedGames(getPlayerMoveHistory()))
+  const { summary, facts } = getCachedCrossGame()
   return NextResponse.json({
     summary,
-    headline: describeCrossGameFacts(summary),
+    headline: facts,
     games: getGameHistory(20),
     skills: {
       tactics: profile.tactics_score,

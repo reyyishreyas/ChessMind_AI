@@ -11,11 +11,15 @@ export class OllamaProvider implements LLMProvider {
     const res = await fetch(`${this.baseUrl}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // Fail instead of hanging forever; a stuck call would block the lane.
+      signal: AbortSignal.any([AbortSignal.timeout(60_000), ...(opts.signal ? [opts.signal] : [])]),
       body: JSON.stringify({
         model: opts.model,
         prompt: opts.prompt,
         stream: false,
         format: "json",
+        // Keep weights resident between calls (default eviction is 5 min).
+        keep_alive: "30m",
         options: {
           temperature: opts.temperature ?? 0.2,
           num_predict: opts.maxTokens ?? 2048,

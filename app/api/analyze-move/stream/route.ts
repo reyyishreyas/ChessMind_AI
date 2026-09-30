@@ -1,6 +1,6 @@
 import { generateJSON, getProvider, resolveCoachModel, resolveModel } from "@/lib/llm"
 import type { ProviderName } from "@/lib/llm/types"
-import { buildDeterministicVerdict, cleanAnalysis, cleanCoachAnalysis } from "@/lib/coach-verdict"
+import { buildDeterministicVerdict, cleanCoachAnalysis, cleanCoachParagraph } from "@/lib/coach-verdict"
 import { buildCoachPrompt, buildCoachSentencePrompt, sanFor, type CoachPromptInput } from "@/lib/coach-prompt"
 import { buildMoveExplanation, describeThreatsAfterMove, oppositeColor } from "@/lib/coach-explain"
 import { type GameState, gameStateToFEN } from "@/lib/chess-engine"
@@ -8,15 +8,14 @@ import { detectMotifDetails, detectMotifs, type MotifDetail, type MotifId } from
 import type { MoveEvaluation } from "@/lib/adaptive-ai"
 import {
   buildPatternProfile,
-  describeCrossGameFacts,
   describePattern,
-  profilesFromSavedGames,
-  summarizePatterns,
   type PatternMoveEvent,
 } from "@/lib/pattern-profile"
-import { getPlayerMoveHistory, getSuggestionForFen, setCoachFeedback } from "@/lib/db/db"
+import { getSuggestionForFen, setCoachFeedback } from "@/lib/db/db"
+import { getCachedCrossGameFacts } from "@/lib/cross-game-facts"
 import { formatPriorSuggestion } from "@/lib/coach-suggest"
 import { getWriter } from "@/lib/llm/logger"
+import { withOllamaLane } from "@/lib/llm/ollama-lane"
 
 export const maxDuration = 60
 
@@ -56,7 +55,7 @@ export async function POST(req: Request) {
       ? sanFor(stateBefore, gameState, evaluation.bestMove.from, evaluation.bestMove.to)
       : evaluation.bestMove
         ? `${evaluation.bestMove.from} to ${evaluation.bestMove.to}`
-        : "N/A"
+        : playerSan
 
   const motifs: MotifId[] =
     stateBefore && stateBefore !== gameState
@@ -124,7 +123,7 @@ export async function POST(req: Request) {
 
       try {
         // Heavier grounded facts (saved-game history) compute after preview.
-        const crossGameFacts = describeCrossGameFacts(summarizePatterns(profilesFromSavedGames(getPlayerMoveHistory())))
+        const crossGameFacts = getCachedCrossGameFacts()
         const promptInput = makePromptInput(crossGameFacts)
 
         const provider = getProvider()
@@ -149,87 +148,96 @@ export async function POST(req: Request) {
           return
         }
 
-        const abort = new AbortController()
-        const timeout = setTimeout(() => abort.abort(), 45_000)
-        const startedAt = Date.now()
-        const baseUrl = process.env.OLLAMA_URL ?? "http://localhost:11434"
+        // High lane: the review must never wait behind a background
+        // suggester in Ollama's serial queue (keep_alive keeps gemma warm).
+        await withOllamaLane("high", async () => {
+          const abort = new AbortController()
+          const timeout = setTimeout(() => abort.abort(), 45_000)
+          try {
+            const startedAt = Date.now()
+            const baseUrl = process.env.OLLAMA_URL ?? "http://localhost:11434"
 
-        const res = await fetch(`${baseUrl}/api/generate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: abort.signal,
-          body: JSON.stringify({
-            model,
-            prompt: buildCoachSentencePrompt(promptInput),
-            stream: true,
-            options: { temperature: 0.5, num_predict: 220 },
-          }),
-        })
+            const res = await fetch(`${baseUrl}/api/generate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              signal: abort.signal,
+              body: JSON.stringify({
+                model,
+                prompt: buildCoachSentencePrompt(promptInput),
+                stream: true,
+                keep_alive: "30m",
+                options: { temperature: 0.5, num_predict: 220 },
+              }),
+            })
 
-        if (!res.ok || !res.body) {
-          throw new Error(`Ollama stream failed (${res.status})`)
-        }
-
-        const reader = res.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ""
-        let lastEmitted = ""
-
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-
-          let newline: number
-          while ((newline = buffer.indexOf("\n")) >= 0) {
-            const line = buffer.slice(0, newline).trim()
-            buffer = buffer.slice(newline + 1)
-            if (!line) continue
-
-            let chunk: { response?: string; done?: boolean }
-            try {
-              chunk = JSON.parse(line)
-            } catch {
-              continue
+            if (!res.ok || !res.body) {
+              throw new Error(`Ollama stream failed (${res.status})`)
             }
 
-            if (chunk.response) {
-              analysis += chunk.response
-              // Emit the cleaned, progressively-complete sentence (not raw
-              // tokens) so the UI grows into the final text with no swap.
-              const visible = cleanAnalysis(analysis)
-              if (visible && visible !== lastEmitted) {
-                lastEmitted = visible
-                emit("token", visible)
+            const reader = res.body.getReader()
+            const decoder = new TextDecoder()
+            let buffer = ""
+            let lastEmitted = ""
+
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+              buffer += decoder.decode(value, { stream: true })
+
+              let newline: number
+              while ((newline = buffer.indexOf("\n")) >= 0) {
+                const line = buffer.slice(0, newline).trim()
+                buffer = buffer.slice(newline + 1)
+                if (!line) continue
+
+                let chunk: { response?: string; done?: boolean }
+                try {
+                  chunk = JSON.parse(line)
+                } catch {
+                  continue
+                }
+
+                if (chunk.response) {
+                  analysis += chunk.response
+                  // Emit the paragraph-shaped, progressively-complete text (not
+                  // raw tokens) so the UI grows into the final answer with no
+                  // swap: this is the same cleaner the `done` event ends with.
+                  const visible = cleanCoachParagraph(analysis)
+                  if (visible && visible !== lastEmitted) {
+                    lastEmitted = visible
+                    emit("token", visible)
+                  }
+                }
+                if (chunk.done) {
+                  // Ollama closes the NDJSON after the done chunk; stop parsing.
+                  buffer = ""
+                  break
+                }
               }
             }
-            if (chunk.done) {
-              // Ollama closes the NDJSON after the done chunk; stop parsing.
-              buffer = ""
-              break
-            }
+
+            analysis = cleanCoachAnalysis(analysis)
+            setCoachFeedback(fenBefore, analysis, model)
+
+            await getWriter().write({
+              ts: new Date().toISOString(),
+              provider: "ollama",
+              model,
+              latencyMs: Date.now() - startedAt,
+              promptVersion: "analyze-move-stream-v1",
+              status: "ok",
+              prompt: buildCoachSentencePrompt(promptInput),
+              data: { analysis },
+              meta: { fen, fenBefore },
+            })
+
+            emit("done", { analysis, success: true, verdict })
+            controller.close()
+          } finally {
+            clearTimeout(timeout)
           }
-        }
-
-        clearTimeout(timeout)
-        analysis = cleanCoachAnalysis(analysis)
-        setCoachFeedback(fenBefore, analysis, model)
-
-        await getWriter().write({
-          ts: new Date().toISOString(),
-          provider: "ollama",
-          model,
-          latencyMs: Date.now() - startedAt,
-          promptVersion: "analyze-move-stream-v1",
-          status: "ok",
-          prompt: buildCoachSentencePrompt(promptInput),
-          data: { analysis },
-          meta: { fen, fenBefore },
         })
-
-        emit("done", { analysis, success: true, verdict })
-        controller.close()
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
 

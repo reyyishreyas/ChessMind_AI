@@ -7,6 +7,7 @@ import {
   type SuggesterRaw,
 } from "@/lib/coach-suggest"
 import { getCoachContext, setCoachSuggestion } from "@/lib/db/db"
+import { withOllamaLane } from "@/lib/llm/ollama-lane"
 
 export const maxDuration = 30
 
@@ -34,23 +35,29 @@ export async function POST(req: Request) {
 
   let raw: SuggesterRaw = {}
   try {
-    const { data } = await generateJSON<SuggesterRaw>({
-      prompt: buildSuggesterPrompt({
-        state,
-        candidates,
-        skillRating: playerStats?.skillRating ?? null,
-        playerColor: state.turn,
-        priorFeedback,
-      }),
-      model,
-      promptVersion: "coach-suggest-v1",
-      temperature: 0.3,
-      maxTokens: 160,
-      attempts: 1,
-    })
+    const generate = (signal: AbortSignal) =>
+      generateJSON<SuggesterRaw>({
+        prompt: buildSuggesterPrompt({
+          state,
+          candidates,
+          skillRating: playerStats?.skillRating ?? null,
+          playerColor: state.turn,
+          priorFeedback,
+        }),
+        model,
+        promptVersion: "coach-suggest-v1",
+        temperature: 0.3,
+        maxTokens: 160,
+        attempts: 1,
+        signal,
+      })
+    // Low lane: background work waits for (and yields to) the player-facing
+    // review — Ollama itself has no notion of priority.
+    const { data } = provider.name === "ollama" ? await withOllamaLane("low", generate) : await generate(new AbortController().signal)
     raw = data
   } catch {
-    // Offline or unparseable: fall back to the engine-best candidate below.
+    // Offline, cancelled by the review lane, or unparseable: fall back to the
+    // engine-best candidate below.
   }
 
   const suggestion = validateSuggestion(state, candidates, raw, model)
