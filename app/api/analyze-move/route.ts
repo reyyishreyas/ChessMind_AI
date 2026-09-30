@@ -5,16 +5,14 @@ import { type MotifDetail, type MotifId, detectMotifDetails, detectMotifs } from
 import type { MoveEvaluation } from "@/lib/adaptive-ai"
 import {
   buildPatternProfile,
-  describeCrossGameFacts,
   describePattern,
-  profilesFromSavedGames,
-  summarizePatterns,
   type PatternMoveEvent,
 } from "@/lib/pattern-profile"
 import { buildCoachPrompt, describeMotifs, sanFor } from "@/lib/coach-prompt"
 import { buildMoveExplanation, describeThreatsAfterMove, oppositeColor } from "@/lib/coach-explain"
 import { formatPriorSuggestion } from "@/lib/coach-suggest"
-import { getPlayerMoveHistory, getSuggestionForFen, setCoachFeedback } from "@/lib/db/db"
+import { getSuggestionForFen, setCoachFeedback } from "@/lib/db/db"
+import { getCachedCrossGameFacts } from "@/lib/cross-game-facts"
 
 export const maxDuration = 30
 
@@ -54,7 +52,7 @@ export async function POST(req: Request) {
       ? sanFor(stateBefore, gameState, evaluation.bestMove.from, evaluation.bestMove.to)
       : evaluation.bestMove
         ? `${evaluation.bestMove.from} to ${evaluation.bestMove.to}`
-        : "N/A"
+        : playerSan
 
   const motifs: MotifId[] =
     stateBefore && stateBefore !== gameState
@@ -71,7 +69,7 @@ export async function POST(req: Request) {
   const patternProfile = buildPatternProfile(patternMoves ?? [])
   const patternFacts = patternProfile.nMoves >= 4 ? describePattern(patternProfile) : ""
 
-  const crossGameFacts = describeCrossGameFacts(summarizePatterns(profilesFromSavedGames(getPlayerMoveHistory())))
+  const crossGameFacts = getCachedCrossGameFacts()
 
   const playerColor = stateBefore?.turn ?? oppositeColor(gameState.turn)
   const threatFact = describeThreatsAfterMove(gameState, playerColor)

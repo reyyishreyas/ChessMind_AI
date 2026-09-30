@@ -52,6 +52,12 @@ export function buildCoachPrompt(input: CoachPromptInput): string {
   const fenBefore = gameStateToFEN(stateBefore)
   const fen = gameStateToFEN(stateAfter)
   const motifFacts = describeMotifs(motifDetails)
+  // The engine's best can BE the played move; saying "the better move was e4"
+  // about a played e4 reads as nonsense to the player. "N/A" is the legacy
+  // marker for "no better move exists" (the player found the best move), so
+  // it must take this branch too — otherwise rule 3 would instruct the model
+  // to reference "N/A" as an alternative and it contradicts itself.
+  const bestIsPlayed = bestSan === "N/A" || bestSan === playerSan
   const patternLine =
     patternFacts !== ""
       ? `- Pattern snapshot this session (ground truth from measured moves): ${patternFacts}`
@@ -68,8 +74,8 @@ VERIFIED FACTS (all correct; never contradict or go beyond them):
 - Move grade: ${evaluation.type}; centipawn loss: ${evaluation.centipawnLoss || 0} cp
 - Position before player move (FEN): ${fenBefore}
 - Position after player move (FEN): ${fen}
-- Better move was: ${bestSan}
-- Why the better move is better: ${bestMoveReason || "not available"}
+- Better move was: ${bestIsPlayed ? `${bestSan} — the engine's top choice, and the player found it` : bestSan}
+- Why the better move is better: ${bestIsPlayed ? "nothing — the played move was the best move" : bestMoveReason || "not available"}
 - Immediate threat after your move: ${threatFact || "none"}
 - Coach's prior suggestion for this position (from the suggester model): ${priorSuggestion || "none"}
 - Verified tactical motifs in this move: ${motifFacts || "none"}
@@ -81,12 +87,12 @@ ${historyLine}
 WARNING RULES:
 1. When you name the player's move, use exactly "${playerSan}".
 2. Never claim a tactic (fork, pin, skewer, discovered attack, etc.) unless it is in the verified list above.
-3. Alternatives must reference the provided better move "${bestSan}".
+3. ${bestIsPlayed ? `The played move "${playerSan}" was also the best move — you may say the engine agrees, but never invent a different alternative.` : `Alternatives must reference the provided better move "${bestSan}".`}
 4. Only mention squares and pieces that exist in the position.
 5. Do not fabricate move counts, game phases, or openings.
 6. The pattern snapshot and pattern-history lines are verified; you may teach against them, but never add pattern claims beyond them.
 7. Only mention a threat that is in the "Immediate threat" line above.
-8. Do not invent your own positional judgments (space, structure, development, sacrifices). Describe the played move using only: the grade, the centipawn loss, the better-move reason, and the threat.
+8. Do not invent your own positional judgments (space, structure, development, sacrifices). Describe the played move using only: the grade, the centipawn loss, the better-move reason, and the threat. Never add claims like "the position is more complex/sharp/unclear" or "slightly better/worse" — they are not in the facts.
 9. If a prior coach suggestion is given and the player played it, confirm it was the right choice. If the player did not play it, compare the played move to it. Never contradict the suggestion.
 
 VARIETY RULES:
@@ -118,7 +124,7 @@ export function buildCoachSentencePrompt(input: CoachPromptInput): string {
 
   return `${groundedHeader}
 
-Return ONLY the coaching explanation: 2 to 3 specific sentences (at most 60 words) that explain what the played move did or missed, why the better move is better when one is given, and any immediate threat. Follow the VARIETY RULES. Plain text only — no JSON, no quotes, no labels, no "Analysis:" prefix.`
+Return ONLY the coaching explanation: 2 to 3 specific sentences (at most 60 words) that explain what the played move did or missed, why the better move is better when one is given, and any immediate threat. Write like a coach talking directly to the player in plain language (open by naming concretely what the move did — a capture, a check, development, a central push — never a fixed template phrase that may not fit), never open with "The player played" and do not repeat the facts list back. If the Immediate threat line says none, do not mention any threat — never invent one, a piece, or a capture that is not in the facts. When the played move was already the best, say the engine agrees instead of inventing an alternative. Follow the VARIETY RULES. Plain text only — no JSON, no quotes, no labels, no "Analysis:" prefix.`
 }
 
 const PIECE_NAMES: Record<string, string> = {

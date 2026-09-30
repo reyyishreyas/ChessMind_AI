@@ -203,6 +203,25 @@ test("prompt forbids unverified positional claims in both variants", () => {
   assert.match(json, /no positional claims of your own/)
 })
 
+test("a best move by the player triggers engine-agrees, never a reference to N/A", () => {
+  // Regression: routes used to pass bestSan "N/A" when the player found the
+  // best move, so rule 3 instructed the model to reference "N/A" as an
+  // alternative — it then contradicted itself ("engine says this is good …
+  // engine agrees this is not the best move") and invented judgments.
+  const found = buildCoachPrompt(buildInput({ bestSan: "e4" }))
+  assert.match(found, /- Better move was: e4 — the engine's top choice, and the player found it/)
+  assert.match(found, /The played move "e4" was also the best move/)
+  assert.ok(!found.includes("Alternatives must reference"))
+
+  const legacyNa = buildCoachPrompt(buildInput())
+  assert.match(legacyNa, /The played move "e4" was also the best move/)
+  assert.ok(!legacyNa.includes("Alternatives must reference"))
+
+  const sentence = buildCoachSentencePrompt(buildInput())
+  assert.ok(!sentence.includes("Grabs the center with tempo"))
+  assert.match(sentence, /Never add claims like "the position is more complex/)
+})
+
 test("cleanCoachAnalysis keeps a short paragraph and drops greetings/dupes", () => {
   const raw =
     'Good move! {"analysis":"e4 fights for the center. e4 fights for the center. It also opens lines for your bishop and queen. Your opponent can reply with e5."}'
