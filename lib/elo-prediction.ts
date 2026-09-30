@@ -133,6 +133,24 @@ export async function collectMoveFeatures(
 }
 
 /**
+ * Check whether the ML Elo backend is reachable and has the model loaded.
+ * Used for the live status chip — never throws.
+ */
+export async function checkEloBackend(): Promise<boolean> {
+  try {
+    const response = await fetch("/api/predict-elo", {
+      method: "GET",
+      signal: AbortSignal.timeout(2500),
+    })
+    if (!response.ok) return false
+    const data = await response.json()
+    return data.available === true
+  } catch {
+    return false
+  }
+}
+
+/**
  * Predict ELO using the FastAPI backend
  */
 export async function predictElo(features: MoveFeatures): Promise<{

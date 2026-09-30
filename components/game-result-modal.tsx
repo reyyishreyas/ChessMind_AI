@@ -9,6 +9,8 @@ type GameResultModalProps = {
   result: "win" | "loss" | "draw"
   tip: string
   playerElo: number
+  aiEloStart?: number | null
+  aiEloEnd?: number
   onNewGame: () => void
   onClose: () => void
 }
@@ -40,9 +42,21 @@ const RESULT_CONFIG = {
   },
 }
 
-export function GameResultModal({ open, result, tip, playerElo, onNewGame, onClose }: GameResultModalProps) {
+export function GameResultModal({
+  open,
+  result,
+  tip,
+  playerElo,
+  aiEloStart,
+  aiEloEnd,
+  onNewGame,
+  onClose,
+}: GameResultModalProps) {
   const config = RESULT_CONFIG[result]
   const Icon = config.icon
+  const showJourney =
+    typeof aiEloStart === "number" && typeof aiEloEnd === "number" && aiEloStart !== aiEloEnd
+  const journeyDelta = showJourney && aiEloEnd !== undefined ? aiEloEnd - (aiEloStart as number) : 0
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -62,6 +76,17 @@ export function GameResultModal({ open, result, tip, playerElo, onNewGame, onClo
           <div className="text-center p-3 rounded-lg bg-secondary/50 border border-border">
             <span className="text-sm text-muted-foreground">Your Rating: </span>
             <span className="font-mono font-bold text-primary text-lg">{playerElo}</span>
+            {showJourney && (
+              <div className="text-xs text-muted-foreground mt-1">
+                Bot Elo adapted{" "}
+                <span className="font-mono">{aiEloStart}</span> →{" "}
+                <span className="font-mono">{aiEloEnd}</span>{" "}
+                <span className={journeyDelta > 0 ? "text-green-500" : "text-red-500"}>
+                  ({journeyDelta > 0 ? `+${journeyDelta}` : journeyDelta})
+                </span>{" "}
+                to match your play
+              </div>
+            )}
           </div>
 
           {/* Tip Section */}

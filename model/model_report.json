@@ -1,0 +1,95 @@
+{
+    "fast_mode": true,
+    "training_time_seconds": 464.5255329608917,
+    "training_time_minutes": 7.742092216014862,
+    "cv_scores": {
+        "lgb": 0.9586110068784391,
+        "xgb": 0.958591159564337,
+        "cat": 0.9589147140140373,
+        "rf": 0.9578297370819673,
+        "et": 0.9570947751353601,
+        "ridge": 0.8662352337783142,
+        "elastic": 0.7959121825460609,
+        "mlp": -3008.6727210525682
+    },
+    "numeric_features_count": 43,
+    "categorical_features_count": 7,
+    "selected_features_count": 37,
+    "selected_features": [
+        "move_number",
+        "start_eval",
+        "end_eval",
+        "delta_eval",
+        "move_quality",
+        "time_per_move",
+        "accuracy_score",
+        "blunder_risk",
+        "phase_Endgame",
+        "start_eval_x_accuracy_score",
+        "start_eval_ratio_accuracy_score",
+        "start_eval_x_blunder_risk",
+        "start_eval_ratio_blunder_risk",
+        "start_eval_x_time_per_move",
+        "start_eval_ratio_time_per_move",
+        "end_eval_x_accuracy_score",
+        "end_eval_ratio_accuracy_score",
+        "end_eval_x_blunder_risk",
+        "end_eval_ratio_blunder_risk",
+        "end_eval_x_time_per_move",
+        "end_eval_ratio_time_per_move",
+        "delta_eval_x_accuracy_score",
+        "delta_eval_x_blunder_risk",
+        "delta_eval_ratio_blunder_risk",
+        "delta_eval_x_time_per_move",
+        "delta_eval_ratio_time_per_move",
+        "accuracy_score_x_blunder_risk",
+        "accuracy_score_ratio_blunder_risk",
+        "accuracy_score_x_phase_Endgame",
+        "accuracy_score_ratio_phase_Endgame",
+        "accuracy_score_x_time_per_move",
+        "accuracy_score_ratio_time_per_move",
+        "time_per_move_x_phase_Endgame",
+        "time_per_move_ratio_phase_Endgame",
+        "time_per_move_ratio_phase_Middlegame",
+        "time_per_move_x_move_number",
+        "time_per_move_ratio_move_number"
+    ],
+    "base_models": [
+        "lgb",
+        "xgb",
+        "cat",
+        "rf",
+        "et",
+        "ridge",
+        "elastic",
+        "mlp"
+    ],
+    "metrics": {
+        "r2": 0.9592087377982451,
+        "mae": 0.7631842415065221,
+        "rmse": 1.0014717743148116,
+        "median_abs_error": 0.6258490025085599,
+        "threshold_accuracies": {
+            "10": 100.0,
+            "25": 100.0,
+            "50": 100.0,
+            "100": 100.0
+        }
+    },
+    "data_shapes": {
+        "X_train": [
+            39996,
+            14
+        ],
+        "X_test": [
+            10032,
+            14
+        ],
+        "y_train": [
+            39996
+        ],
+        "y_test": [
+            10032
+        ]
+    }
+}

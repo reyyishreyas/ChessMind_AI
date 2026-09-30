@@ -28,8 +28,6 @@ model/X_test.csv
 model/y_train.csv
 model/y_test.csv
 model/catboost_info/
-model/feature_importance.png
-model/model_report.json
 
 # OS files
 .DS_Store

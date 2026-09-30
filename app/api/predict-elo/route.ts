@@ -71,3 +71,17 @@ export async function POST(req: Request) {
   }
 }
 
+// Lightweight availability probe for the UI (status chip). Unlike the POST
+// path this never errors: backend down simply means { available: false }.
+export async function GET() {
+  try {
+    const response = await fetch(`${FASTAPI_URL}/health`, {
+      signal: AbortSignal.timeout(2000),
+    })
+    const data = await response.json().catch(() => ({}))
+    return NextResponse.json({ available: response.ok && data.model_loaded === true })
+  } catch {
+    return NextResponse.json({ available: false })
+  }
+}
+
