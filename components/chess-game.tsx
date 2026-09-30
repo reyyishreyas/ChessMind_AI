@@ -31,6 +31,7 @@ import { eloToDifficulty, getAdaptiveDifficulty, STOCKFISH_LEVELS } from "@/lib/
 import { chooseBotMove } from "@/lib/bot"
 import { scoresFromEvents } from "@/lib/pattern-profile"
 import {
+  checkEloBackend,
   collectMoveFeatures,
   predictElo,
   calculateEloAfterGame,
@@ -41,6 +42,7 @@ import { CoachInsights } from "./coach-insights"
 import { CoachHints } from "./coach-hints"
 import {
   buildCoachHints,
+  canonicalCoachMove,
   shouldShowHints,
   suggestStrongMove,
   SLOW_TURN_MS,
@@ -65,15 +67,21 @@ type CoachStreamHandlers = {
 /**
  * Instant-feedback coach stream (SSE). Emits a deterministic verdict first
  * (so Elo features/persistence can start immediately), then streams the coach
- * sentence and finishes with a `done` event carrying the cleaned text.
- * Throws only when the stream never delivered a verdict (client then falls
- * back to the JSON route for a full-quality analysis).
+ * sentence progressively and finishes with a `done` event carrying the final
+ * text. Throws when the stream dies before a verdict or before `done` (the
+ * client then falls back to the JSON route for a full-quality analysis), and
+ * when `signal` aborts (the caller has moved on and ignores the result).
  */
-async function streamCoachAnalysis(body: unknown, handlers: CoachStreamHandlers): Promise<void> {
+async function streamCoachAnalysis(
+  body: unknown,
+  handlers: CoachStreamHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
   const res = await fetch("/api/analyze-move/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal,
   })
   if (!res.ok || !res.body) throw new Error(`Coach stream failed (${res.status})`)
 
@@ -81,6 +89,7 @@ async function streamCoachAnalysis(body: unknown, handlers: CoachStreamHandlers)
   const decoder = new TextDecoder()
   let buffer = ""
   let sawPreview = false
+  let sawDone = false
   let analysis = ""
 
   while (true) {
@@ -102,9 +111,12 @@ async function streamCoachAnalysis(body: unknown, handlers: CoachStreamHandlers)
         sawPreview = true
         handlers.onPreview(data)
       } else if (event === "token") {
-        analysis += data
+        // token events carry the full cleaned paragraph so far, not a delta:
+        // replace, otherwise every snapshot stacks ("Nf3 grabs" + "Nf3 grabs the").
+        analysis = data
         handlers.onToken?.(analysis)
       } else if (event === "done") {
+        sawDone = true
         if (data.analysis) analysis = data.analysis
         handlers.onDone(analysis, data)
       }
@@ -112,6 +124,7 @@ async function streamCoachAnalysis(body: unknown, handlers: CoachStreamHandlers)
   }
 
   if (!sawPreview) throw new Error("Coach stream ended without a verdict")
+  if (!sawDone) throw new Error("Coach stream ended without a done event")
 }
 
 export function ChessGame() {
@@ -142,6 +155,8 @@ export function ChessGame() {
   const [showCoachInsights, setShowCoachInsights] = useState(false)
   const [botElo, setBotElo] = useState<number>(STOCKFISH_LEVELS[5]?.elo || 1200)
   const [botEloHistory, setBotEloHistory] = useState<number[]>([]) // Track ELO history for undo
+  // Whether the trained ensemble model (FastAPI backend) is driving dynamic Elo
+  const [eloModelStatus, setEloModelStatus] = useState<"live" | "fallback" | "unknown">("unknown")
   const [hints, setHints] = useState<CoachHintsPayload | null>(null)
   const livePatternMoves = useRef<import("@/lib/pattern-profile").PatternMoveEvent[]>([])
 
@@ -214,6 +229,19 @@ export function ChessGame() {
 
     loadSession()
   }, [])
+
+  // Probe the ML Elo backend when a game becomes active so the status chip
+  // reflects reality before the first move is analyzed.
+  useEffect(() => {
+    if (!gameStarted) return
+    let cancelled = false
+    void checkEloBackend().then((available) => {
+      if (!cancelled) setEloModelStatus(available ? "live" : "fallback")
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [gameStarted])
 
   useEffect(() => {
     if (!gameStarted || isLoadingSession) return
@@ -474,6 +502,11 @@ export function ChessGame() {
     return () => clearInterval(id)
   }, [gameStarted, playerStats, playerColor, gameState.turn, gameState.isCheckmate, gameState.isStalemate, gameState.isDraw, moveNotations, computeCoachHints])
 
+  // One review per move: a newer move supersedes the in-flight stream so a
+  // stale `done` can never paint the previous move's text as the new review.
+  const analysisSeqRef = useRef(0)
+  const analysisAbortRef = useRef<AbortController | null>(null)
+
   const requestAIAnalysis = async (
     stateBefore: GameState,
     stateAfter: GameState,
@@ -484,6 +517,11 @@ export function ChessGame() {
     timePerMove: number,
     botMove?: { from: Square; to: Square }
   ) => {
+    const seq = ++analysisSeqRef.current
+    analysisAbortRef.current?.abort()
+    const controller = new AbortController()
+    analysisAbortRef.current = controller
+    const isCurrent = () => seq === analysisSeqRef.current
     setIsAnalyzing(true)
     try {
       // Incremental pattern events — O(1) per move instead of O(n) full replay.
@@ -579,6 +617,7 @@ export function ChessGame() {
             console.log("🔮 Predicting bot ELO with features:", features)
             const prediction = await predictElo(features)
             console.log("📊 Backend prediction response:", prediction)
+            setEloModelStatus(prediction.success ? "live" : "fallback")
 
             if (prediction.success) {
               const maxStep = 25
@@ -616,22 +655,35 @@ export function ChessGame() {
 
       try {
         // Instant-feedback path: the deterministic verdict streams in first
-        // (so Elo features/persistence run without waiting). Intermediate
-        // tokens are consumed but not rendered — the box shows one final,
-        // clean, full sentence so there is no big-block-then-shortens flash.
-        await streamCoachAnalysis(reqBody, {
-          onPreview: (verdict) => {
-            setAIAnalysis("")
-            setIsAnalyzing(false)
-            void runEloPrediction(verdict)
+        // (so Elo features/persistence run without waiting), then the coach
+        // sentence renders token by token — the server sends paragraph-shaped
+        // cleaned text, so the box grows straight into the final answer with
+        // no big-block-then-shortens flash. The spinner stays up only until
+        // the first token lands.
+        await streamCoachAnalysis(
+          reqBody,
+          {
+            onPreview: (verdict) => {
+              if (!isCurrent()) return
+              setAIAnalysis("")
+              void runEloPrediction(verdict)
+            },
+            onToken: (text) => {
+              if (!isCurrent() || !text) return
+              setAIAnalysis(text)
+              setIsAnalyzing(false)
+            },
+            onDone: (analysis) => {
+              if (!isCurrent()) return
+              if (analysis) setAIAnalysis(analysis)
+              setIsAnalyzing(false)
+            },
           },
-          onToken: () => {},
-          onDone: (analysis) => {
-            if (analysis) setAIAnalysis(analysis)
-            setIsAnalyzing(false)
-          },
-        })
+          controller.signal,
+        )
       } catch (streamError) {
+        // Superseded by a newer move: ignore silently — no fallback call.
+        if (!isCurrent()) return
         // Fall back to the JSON route (original behavior, still full quality).
         console.warn("Coach stream unavailable; falling back to JSON analysis:", streamError)
         const response = await fetch("/api/analyze-move", {
@@ -639,10 +691,12 @@ export function ChessGame() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(reqBody),
         })
+        if (!isCurrent()) return
         if (!response.ok) {
           throw new Error("Gemini analysis failed")
         }
         let geminiData = await response.json()
+        if (!isCurrent()) return
         const hasGemini = !!(geminiData && geminiData.move_quality && typeof geminiData.accuracy_score === "number" && geminiData.blunder_risk !== undefined)
         if (!hasGemini) {
           try {
@@ -654,6 +708,7 @@ export function ChessGame() {
             geminiData = await retry.json()
           } catch {}
         }
+        if (!isCurrent()) return
         if (geminiData.analysis) {
           setAIAnalysis(geminiData.analysis)
         }
@@ -673,7 +728,9 @@ export function ChessGame() {
     } catch (error) {
       console.error("Failed to get AI analysis:", error)
     } finally {
-      setIsAnalyzing(false)
+      // Only the newest request may clear the spinner; a superseded one
+      // finishing late would otherwise blank the current review's wait.
+      if (isCurrent()) setIsAnalyzing(false)
     }
   }
 
@@ -706,6 +763,15 @@ export function ChessGame() {
             turnStartRef.current = Date.now()
 
             const evaluation = evaluatePlayerMove(stateBefore, selectedSquare, square)
+            if (evaluation.bestMove) {
+              // Keep the displayed "better move" on the coach's canonical move
+              // (a sound fork when one exists) so the verdict cards, feedback
+              // facts and hint chip all recommend the same move.
+              const canonical = canonicalCoachMove(stateBefore)
+              if (canonical) {
+                evaluation.bestMove = { ...evaluation.bestMove, from: canonical.from, to: canonical.to }
+              }
+            }
             const moveNumber = Math.floor(moveNotations.length / 2) + 1
 
             // Set evaluation immediately so user sees feedback
@@ -944,6 +1010,8 @@ export function ChessGame() {
         result={gameResult?.result || "draw"}
         tip={gameResult?.tip || ""}
         playerElo={playerStats?.skillRating || 1000}
+        aiEloStart={gameStartEloRef.current}
+        aiEloEnd={Math.round(botElo)}
         onNewGame={handleNewGame}
         onClose={() => setShowGameResult(false)}
       />
@@ -970,6 +1038,27 @@ export function ChessGame() {
               </span>
               <span className="text-muted-foreground">
                 Lv: <span className="font-bold">{currentDifficulty}</span>
+              </span>
+              <span
+                className="flex items-center gap-1 text-muted-foreground"
+                title={
+                  eloModelStatus === "live"
+                    ? "Dynamic Elo driven by the trained model"
+                    : eloModelStatus === "fallback"
+                      ? "ML backend offline — verdict-based Elo fallback"
+                      : "Checking Elo model…"
+                }
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    eloModelStatus === "live"
+                      ? "bg-green-500"
+                      : eloModelStatus === "fallback"
+                        ? "bg-amber-500"
+                        : "bg-muted-foreground/50"
+                  }`}
+                />
+                {eloModelStatus === "live" ? "Model" : eloModelStatus === "fallback" ? "Heuristic" : "…"}
               </span>
             </div>
           ) : (
@@ -1037,6 +1126,7 @@ export function ChessGame() {
               playerStats={playerStats}
               aiElo={Math.round(botElo)}
               difficulty={currentDifficulty}
+              eloHistory={[...botEloHistory, Math.round(botElo)]}
               onUndo={handleUndo}
             />
           </div>
