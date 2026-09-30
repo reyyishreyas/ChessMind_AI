@@ -25,8 +25,13 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body className={`font-sans antialiased`}>{children}</body>
+    // suppressHydrationWarning: extensions (e.g. Grammarly) inject data-*
+    // attributes into <html>/<body> before React hydrates — attribute-only
+    // mismatch, so it's safe to ignore.
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body className={`font-sans antialiased`} suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   )
 }
